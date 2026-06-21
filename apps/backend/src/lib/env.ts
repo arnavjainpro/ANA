@@ -1,9 +1,29 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 /**
  * Centralised, validated access to environment variables. API keys live here
  * and in the backend only — they must never cross to the renderer or IPC.
  */
+
+// The backend runs with its cwd set to apps/backend (npm workspace), but the
+// canonical .env lives at the repo root. Walk up from cwd to find it so the
+// same file works whether the server is launched from the root or the workspace.
+function findEnvFile(): string | undefined {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i += 1) {
+    const candidate = join(dir, '.env');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+}
+
+const envPath = findEnvFile();
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 function required(name: string): string {
   const value = process.env[name];
