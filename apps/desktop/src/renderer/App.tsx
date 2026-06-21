@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { useEffect, useState } from 'react';
 import { TopBar } from './components/TopBar';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTree } from './components/FileTree';
@@ -21,8 +20,10 @@ export default function App(): JSX.Element {
   const error = useConversationStore((s) => s.error);
   const repoError = useRepoStore((s) => s.error);
   const { openFiles } = useUiStore();
+  
+  const [centerWidth, setCenterWidth] = useState(40);
+  const [dragging, setDragging] = useState(false);
 
-  // Restore an existing GitHub session on launch.
   useEffect(() => {
     void (async () => {
       const status = await window.ana.auth.status();
@@ -34,16 +35,45 @@ export default function App(): JSX.Element {
     })();
   }, [setConnected, setRepos]);
 
+  const handleMouseDown = () => {
+    setDragging(true);
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const container = document.getElementById('main-content');
+      if (!container) return;
+      
+      const rect = container.getBoundingClientRect();
+      const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+      
+      if (newWidth > 20 && newWidth < 80) {
+        setCenterWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging]);
+
   return (
     <div className="flex h-screen w-screen flex-col bg-ana-bg text-ana-text">
-      {/* Top Bar */}
       <TopBar />
 
-      {/* Main Content with Resizable Panels */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Left Sidebar */}
+      <div id="main-content" className="flex flex-1 min-h-0 overflow-hidden">
         {sidebarOpen && (
-          <aside className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden">
+          <aside className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0">
             <ConnectPanel />
             <div className="flex-1 overflow-auto">
               <FileTree />
@@ -51,29 +81,27 @@ export default function App(): JSX.Element {
           </aside>
         )}
 
-        {/* Resizable center and right panels */}
-        <PanelGroup direction="horizontal" className="flex-1">
-          {/* Center: Ana + Composer */}
-          <Panel defaultSize={35} minSize={20} className="flex flex-col">
-            <section className="flex h-full flex-col bg-ana-panel border-r border-ana-border">
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <AnaConversation />
-              </div>
-              <Composer />
-            </section>
-          </Panel>
+        <section
+          className="flex flex-col bg-ana-panel border-r border-ana-border overflow-hidden"
+          style={{ width: `${centerWidth}%` }}
+        >
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AnaConversation />
+          </div>
+          <Composer />
+        </section>
 
-          <PanelResizeHandle className="w-1 bg-ana-border hover:bg-ana-accent/50 transition-colors cursor-col-resize" />
+        <div
+          onMouseDown={handleMouseDown}
+          className={`w-1 bg-ana-border hover:bg-ana-accent/50 cursor-col-resize transition-colors ${
+            dragging ? 'bg-ana-accent/50' : ''
+          }`}
+        />
 
-          {/* Right: Workspace */}
-          <Panel defaultSize={65} minSize={20} className="flex flex-col">
-            <section className="h-full overflow-hidden bg-ana-bg">
-              {activeMode === 'Plan' ? <WhiteboardPanel /> : <DiagramPanel />}
-            </section>
-          </Panel>
-        </PanelGroup>
+        <section className="flex-1 min-h-0 overflow-hidden bg-ana-bg">
+          {activeMode === 'Plan' ? <WhiteboardPanel /> : <DiagramPanel />}
+        </section>
 
-        {/* File Viewer Side Pane */}
         {openFiles.length > 0 && (
           <>
             <div className="w-1 bg-ana-border" />
@@ -84,14 +112,12 @@ export default function App(): JSX.Element {
         )}
       </div>
 
-      {/* Error banner */}
       {(error || repoError) && (
         <div className="border-t border-red-900/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
           {error ?? repoError}
         </div>
       )}
 
-      {/* Command Palette */}
       <CommandPalette />
     </div>
   );
