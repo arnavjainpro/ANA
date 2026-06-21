@@ -33,14 +33,17 @@ export function AnaConversation(): JSX.Element {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-ana-panel">
         <div className="text-center">
-          <p className="text-lg font-medium">Ana</p>
-          <p className="mt-1 text-sm text-gray-400">Start a session to talk with Ana.</p>
+          <svg className="w-12 h-12 mx-auto text-ana-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm font-semibold text-ana-text">Start a conversation</p>
+          <p className="mt-1 text-xs text-ana-text-muted">Initialize Ana to begin discussing this repository</p>
         </div>
         <button
           type="button"
           onClick={handleStart}
           disabled={starting}
-          className="rounded-md bg-ana-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {starting ? 'Starting…' : 'Start Ana'}
         </button>
@@ -53,7 +56,7 @@ export function AnaConversation(): JSX.Element {
       title="Ana"
       src={conversationUrl}
       allow="camera; microphone; autoplay; display-capture"
-      className="h-full w-full border-0 bg-black"
+      className="h-full w-full border-0 bg-ana-bg"
     />
   );
 }

@@ -45,26 +45,38 @@ export function Composer(): JSX.Element {
   }
 
   return (
-    <div className="flex items-center gap-2 border-t border-ana-border bg-ana-panel p-3">
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void send();
-        }}
-        placeholder={ready ? 'Ask Ana about this repo…' : 'Index a repo to begin…'}
-        disabled={!ready || processing}
-        className="flex-1 rounded-md border border-ana-border bg-ana-bg px-3 py-2 text-sm outline-none focus:border-ana-accent disabled:opacity-50"
-      />
-      <button
-        type="button"
-        onClick={() => void send()}
-        disabled={!ready || processing}
-        className="rounded-md bg-ana-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {processing ? '…' : 'Send'}
-      </button>
+    <div className="flex flex-col gap-2 border-t border-ana-border bg-ana-panel p-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          placeholder={ready ? 'Ask Ana (Shift+Enter for new line)…' : 'Index a repo to begin…'}
+          disabled={!ready || processing}
+          className="flex-1 rounded border border-ana-border bg-ana-bg px-3 py-2 text-sm text-ana-text outline-none placeholder:text-ana-text-muted focus:border-ana-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        />
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={!ready || processing || !text.trim()}
+          className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {processing ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m0 0h6" />
+            </svg>
+          ) : (
+            'Send'
+          )}
+        </button>
+      </div>
+      <p className="text-xs text-ana-text-muted px-1">Shift+Enter for multiline</p>
     </div>
   );
 }

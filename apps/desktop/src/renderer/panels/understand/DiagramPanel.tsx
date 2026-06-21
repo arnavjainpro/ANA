@@ -41,19 +41,28 @@ export function DiagramPanel(): JSX.Element {
   }, [diagram]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-ana-border px-4 py-2 text-sm font-medium text-gray-300">
-        Architecture
+    <div className="flex h-full flex-col bg-ana-bg">
+      <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
+        <h2 className="text-lg font-semibold text-ana-text">Architecture</h2>
+        <p className="mt-1 text-xs text-ana-text-muted">System structure and data flow</p>
       </div>
       <div className="flex flex-1 items-center justify-center overflow-auto p-6">
         {!diagram ? (
-          <p className="text-sm text-gray-500">
-            Ask Ana about the repo to see a diagram here.
-          </p>
+          <div className="text-center">
+            <svg className="w-12 h-12 mx-auto text-ana-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <p className="text-sm text-ana-text-muted">
+              Ask Ana about the repo to see a diagram
+            </p>
+          </div>
         ) : error ? (
-          <p className="text-sm text-red-400">{error}</p>
+          <div className="text-center">
+            <p className="text-sm text-red-400 mb-2">Failed to render diagram</p>
+            <p className="text-xs text-ana-text-muted">{error}</p>
+          </div>
         ) : (
-          <div ref={containerRef} className="max-h-full max-w-full" />
+          <div ref={containerRef} className="max-h-full max-w-full svg-container" />
         )}
       </div>
     </div>
