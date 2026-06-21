@@ -56,7 +56,7 @@ export function AnaConversation(): JSX.Element {
       title="Ana"
       src={conversationUrl}
       allow="camera; microphone; autoplay; display-capture"
-      className="h-full w-full border-0 bg-ana-bg"
+      className="h-full w-full border-0 bg-transparent"
     />
   );
 }
