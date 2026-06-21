@@ -39,27 +39,24 @@ export default function App(): JSX.Element {
       {/* Top Bar */}
       <TopBar />
 
-      {/* Main Content Area with Resizable Panels */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left Sidebar: File tree & repo browser (collapsible) */}
+      {/* Main Content with Resizable Panels */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Left Sidebar */}
         {sidebarOpen && (
-          <>
-            <aside className="flex w-80 flex-col border-r border-ana-border bg-ana-panel overflow-hidden">
-              <ConnectPanel />
-              <div className="min-h-0 flex-1 overflow-auto">
-                <FileTree />
-              </div>
-            </aside>
-            <PanelResizeHandle className="w-1 bg-ana-border hover:bg-ana-accent/50 transition-colors cursor-col-resize" />
-          </>
+          <aside className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden">
+            <ConnectPanel />
+            <div className="flex-1 overflow-auto">
+              <FileTree />
+            </div>
+          </aside>
         )}
 
-        {/* Main Content Panels: Ana + Right Workspace */}
+        {/* Resizable center and right panels */}
         <PanelGroup direction="horizontal" className="flex-1">
-          {/* Center: Ana conversation + composer */}
-          <Panel defaultSize={35} minSize={20} maxSize={70}>
+          {/* Center: Ana + Composer */}
+          <Panel defaultSize={35} minSize={20} className="flex flex-col">
             <section className="flex h-full flex-col bg-ana-panel border-r border-ana-border">
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <AnaConversation />
               </div>
               <Composer />
@@ -68,24 +65,24 @@ export default function App(): JSX.Element {
 
           <PanelResizeHandle className="w-1 bg-ana-border hover:bg-ana-accent/50 transition-colors cursor-col-resize" />
 
-          {/* Right: Dynamic workspace (Diagram or Whiteboard) */}
-          <Panel defaultSize={65} minSize={20}>
-            <section className="min-w-0 h-full overflow-hidden bg-ana-bg">
+          {/* Right: Workspace */}
+          <Panel defaultSize={65} minSize={20} className="flex flex-col">
+            <section className="h-full overflow-hidden bg-ana-bg">
               {activeMode === 'Plan' ? <WhiteboardPanel /> : <DiagramPanel />}
             </section>
           </Panel>
         </PanelGroup>
-      </div>
 
-      {/* File Viewer Side Pane */}
-      {openFiles.length > 0 && (
-        <>
-          <div className="w-1 bg-ana-border" />
-          <aside className="w-80 flex-shrink-0 border-l border-ana-border bg-ana-panel overflow-hidden">
-            <FileViewer />
-          </aside>
-        </>
-      )}
+        {/* File Viewer Side Pane */}
+        {openFiles.length > 0 && (
+          <>
+            <div className="w-1 bg-ana-border" />
+            <aside className="w-80 flex-shrink-0 border-l border-ana-border bg-ana-panel overflow-hidden">
+              <FileViewer />
+            </aside>
+          </>
+        )}
+      </div>
 
       {/* Error banner */}
       {(error || repoError) && (
