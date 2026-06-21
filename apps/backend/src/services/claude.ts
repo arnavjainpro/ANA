@@ -1,0 +1,213 @@
+import Anthropic from '@anthropic-ai/sdk';
+import { env } from '../lib/env.js';
+import { AppError } from '../lib/errors.js';
+import type {
+  AnaResponse,
+  ConversationTurn,
+  IntentClassification,
+  Mode,
+  RetrievedChunk,
+} from '../lib/types.js';
+
+// Models per spec §5.2. Haiku for classification, Sonnet for reasoning.
+const CLASSIFY_MODEL = 'claude-haiku-4-5';
+const REASONING_MODEL = 'claude-sonnet-4-6';
+
+let anthropic: Anthropic | null = null;
+
+function getClient(): Anthropic {
+  if (anthropic) return anthropic;
+  if (!env.anthropic.apiKey) {
+    throw new AppError(500, 'ANTHROPIC_NOT_CONFIGURED', 'ANTHROPIC_API_KEY is not set.');
+  }
+  anthropic = new Anthropic({ apiKey: env.anthropic.apiKey });
+  return anthropic;
+}
+
+// --- Static system prompts (the cached block for every Call 2 request). ---
+// These MUST be static strings — no interpolation — so the prompt cache holds.
+
+const CLASSIFY_SYSTEM_PROMPT = `You are the intent classifier for Ana, a voice-first AI coding partner. Classify the user's utterance.
+
+Respond ONLY with a JSON object in this exact shape, no preamble:
+{
+  "mode": "Understand | Plan | Build | Debug | Review",
+  "intent": "<one sentence summary of what the user wants>",
+  "target": "<file, feature, or component if mentioned, else null>"
+}
+
+Rules:
+- Choose "Understand" when the user wants to know what the codebase does or how something works.
+- Choose "Plan" when the user wants to build, add, or design a feature or product.
+- Only "Understand" and "Plan" are currently supported. If the utterance fits Build, Debug, or Review, still return that label honestly.
+- target is null unless a concrete file, function, feature, or component is named.
+- Respond with the JSON object only.`;
+
+const UNDERSTAND_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person understand a software codebase.
+
+Your job is to explain what the codebase does in plain, conversational language — no jargon, no assumptions about technical knowledge.
+
+You will receive:
+- Relevant code chunks retrieved from the repo (labelled with their file paths)
+- The user's question or statement
+- Recent conversation history
+
+You must respond with a JSON object in this exact shape:
+{
+  "spoken": "<Ana's spoken reply — conversational, 2–4 sentences, no code, no markdown>",
+  "panel": "diagram",
+  "payload": {
+    "mermaid": "<a valid Mermaid graph TD or flowchart LR string representing the architecture or data flow most relevant to the user's question>"
+  }
+}
+
+Rules:
+- spoken must be plain speech. No bullet points, no code blocks, no bold text.
+- mermaid must be valid Mermaid syntax. Use graph TD for top-down flows, flowchart LR for left-right.
+- Only include nodes and edges directly relevant to the user's question. Do not render the entire codebase.
+- Node labels must be short (2–4 words). Use --> for edges. Add edge labels where they clarify data direction.
+- If you cannot determine the architecture from the provided chunks, say so in spoken and return a mermaid diagram with a single node: graph TD; A[Not enough context]
+- Never include markdown fences around the mermaid string. Return the raw Mermaid syntax only.
+- Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
+
+const PLAN_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person plan a new feature or product.
+
+Your job is to take what they describe and turn it into a structured plan they can act on — without assuming any technical knowledge.
+
+You will receive:
+- Relevant code chunks from their existing repo (if connected) — use these to understand what already exists
+- The user's description of what they want to build
+- Recent conversation history
+
+You must respond with a JSON object in this exact shape:
+{
+  "spoken": "<Ana's spoken reply — conversational, 2–4 sentences, confirms understanding and summarises the plan>",
+  "panel": "whiteboard",
+  "payload": {
+    "stories": [
+      { "id": "S1", "as": "<type of user>", "want": "<action>", "so": "<outcome>" }
+    ],
+    "criteria": [
+      { "storyId": "S1", "items": ["<acceptance criterion>"] }
+    ],
+    "tasks": [
+      { "id": "T1", "title": "<task title>", "detail": "<one sentence>", "storyId": "S1" }
+    ]
+  }
+}
+
+Rules:
+- spoken must be plain speech. No bullet points, no code blocks.
+- stories must have at least 1 and no more than 5 items for MVP scope.
+- Each task maps to exactly one story via storyId.
+- Tasks should be concrete and small — things that can be done in a few hours.
+- Do not invent features the user did not ask for.
+- If the user's request is too vague to generate a plan, ask one clarifying question in spoken and return empty arrays for stories, criteria, and tasks.
+- Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
+
+function systemPromptFor(mode: Mode): string {
+  return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
+}
+
+/** Strip markdown fences and parse a JSON object out of a model reply. */
+function parseJsonObject<T>(raw: string): T {
+  let text = raw.trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  }
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first === -1 || last === -1) {
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return parseable JSON.');
+  }
+  return JSON.parse(text.slice(first, last + 1)) as T;
+}
+
+function blockText(message: Anthropic.Message): string {
+  return message.content
+    .map((b) => (b.type === 'text' ? b.text : ''))
+    .join('')
+    .trim();
+}
+
+function formatHistory(history: ConversationTurn[]): string {
+  if (history.length === 0) return '(no prior conversation)';
+  return history
+    .slice(-6)
+    .map((t) => `${t.role === 'user' ? 'User' : 'Ana'}: ${t.content}`)
+    .join('\n');
+}
+
+function formatChunks(chunks: RetrievedChunk[]): string {
+  if (chunks.length === 0) return '(no code chunks retrieved)';
+  return chunks
+    .map((c) => `--- ${c.filePath} ---\n${c.content}`)
+    .join('\n\n');
+}
+
+/** Call 1 — intent classification (Haiku). Fast, returns small JSON. */
+export async function classifyIntent(
+  utterance: string,
+  history: ConversationTurn[],
+): Promise<IntentClassification> {
+  const message = await getClient().messages.create({
+    model: CLASSIFY_MODEL,
+    max_tokens: 256,
+    system: [
+      {
+        type: 'text',
+        text: CLASSIFY_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: `Recent conversation:\n${formatHistory(history)}\n\nUser utterance: ${utterance}`,
+      },
+    ],
+  });
+  return parseJsonObject<IntentClassification>(blockText(message));
+}
+
+/** Call 2 — reasoning + structured response (Sonnet). */
+export async function generateResponse(params: {
+  mode: Mode;
+  utterance: string;
+  intent: IntentClassification;
+  chunks: RetrievedChunk[];
+  history: ConversationTurn[];
+  fileContents?: { path: string; contents: string };
+}): Promise<AnaResponse> {
+  const { mode, utterance, intent, chunks, history, fileContents } = params;
+
+  const contextParts = [
+    `Retrieved code chunks:\n${formatChunks(chunks)}`,
+    `Recent conversation:\n${formatHistory(history)}`,
+    `Classified intent: ${JSON.stringify(intent)}`,
+    `User utterance: ${utterance}`,
+  ];
+  if (fileContents) {
+    contextParts.unshift(
+      `Full contents of ${fileContents.path}:\n${fileContents.contents}`,
+    );
+  }
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 2000,
+    system: [
+      {
+        type: 'text',
+        text: systemPromptFor(mode),
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  return parseJsonObject<AnaResponse>(blockText(message));
+}
+
+/** A short spoken fallback when a Claude call fails or times out. */
+export const SPOKEN_FALLBACK = "I ran into an issue — can you try again?";
