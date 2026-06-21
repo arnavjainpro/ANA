@@ -1,0 +1,90 @@
+import { app, BrowserWindow } from 'electron';
+import { join } from 'node:path';
+import { handleAuthCallback } from './github/oauth.js';
+import { registerAuthIpc } from './ipc/auth.js';
+import { registerRepoIpc } from './ipc/repo.js';
+import { registerConversationIpc } from './ipc/conversation.js';
+
+// Vite-plugin-electron injects these env vars in dev.
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+
+let mainWindow: BrowserWindow | null = null;
+
+const PROTOCOL = 'ana';
+
+function registerDeepLink(): void {
+  if (process.defaultApp && process.argv.length >= 2) {
+    // Dev on Windows: register with the explicit path to the electron binary.
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [join(process.argv[1] ?? '')]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+}
+
+/** Pull an ana:// URL out of argv (Windows/Linux deep-link delivery). */
+function deepLinkFromArgv(argv: string[]): string | undefined {
+  return argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+}
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 960,
+    minHeight: 640,
+    backgroundColor: '#0f1117',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  if (DEV_SERVER_URL) {
+    void mainWindow.loadURL(DEV_SERVER_URL);
+  } else {
+    void mainWindow.loadFile(join(__dirname, '../../dist/index.html'));
+  }
+}
+
+// Single-instance lock so deep links reach the running app (Windows/Linux).
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const url = deepLinkFromArgv(argv);
+    if (url) handleAuthCallback(url);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  // macOS deep-link delivery.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleAuthCallback(url);
+  });
+
+  app.whenReady().then(() => {
+    registerDeepLink();
+    registerAuthIpc();
+    registerRepoIpc();
+    registerConversationIpc();
+    createWindow();
+
+    // Handle a deep link present at first launch (Windows/Linux).
+    const initialUrl = deepLinkFromArgv(process.argv);
+    if (initialUrl) handleAuthCallback(initialUrl);
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

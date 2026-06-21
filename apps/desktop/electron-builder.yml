@@ -1,0 +1,23 @@
+appId: com.ana.desktop
+productName: Ana
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+protocols:
+  - name: Ana
+    schemes:
+      - ana
