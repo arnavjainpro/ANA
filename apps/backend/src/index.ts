@@ -4,6 +4,7 @@ import { env } from './lib/env.js';
 import { authRoutes } from './routes/auth.js';
 import { repoRoutes } from './routes/repo.js';
 import { conversationRoutes } from './routes/conversation.js';
+import { completionsRoutes } from './routes/completions.js';
 
 async function main(): Promise<void> {
   const app = Fastify({
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   await app.register(authRoutes);
   await app.register(repoRoutes);
   await app.register(conversationRoutes);
+  await app.register(completionsRoutes);
 
   await app.listen({ port: env.port, host: '0.0.0.0' });
   app.log.info(`Ana backend listening on :${env.port}`);

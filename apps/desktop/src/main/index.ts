@@ -1,9 +1,12 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, session, systemPreferences } from 'electron';
 import { join } from 'node:path';
 import { handleAuthCallback } from './github/oauth.js';
 import { registerAuthIpc } from './ipc/auth.js';
 import { registerRepoIpc } from './ipc/repo.js';
 import { registerConversationIpc } from './ipc/conversation.js';
+import { registerFilesystemIpc } from './ipc/filesystem.js';
+import { registerGitIpc } from './ipc/git.js';
+import { registerBuildIpc } from './ipc/build.js';
 
 // Vite-plugin-electron injects these env vars in dev.
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -24,6 +27,24 @@ function registerDeepLink(): void {
 /** Pull an ana:// URL out of argv (Windows/Linux deep-link delivery). */
 function deepLinkFromArgv(argv: string[]): string | undefined {
   return argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+}
+
+/**
+ * Grant camera/microphone to the renderer so the Tavus (Daily) iframe can join
+ * the call. Without this, Electron denies getUserMedia by default and Tavus ends
+ * the conversation on its absent-participant timeout. On macOS we also trigger
+ * the OS-level media prompts.
+ */
+async function setupMediaPermissions(): Promise<void> {
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'media');
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media');
+
+  if (process.platform === 'darwin') {
+    await systemPreferences.askForMediaAccess('microphone').catch(() => false);
+    await systemPreferences.askForMediaAccess('camera').catch(() => false);
+  }
 }
 
 function createWindow(): void {
@@ -68,11 +89,15 @@ if (!gotLock) {
     handleAuthCallback(url);
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     registerDeepLink();
+    await setupMediaPermissions();
     registerAuthIpc();
     registerRepoIpc();
     registerConversationIpc();
+    registerFilesystemIpc();
+    registerGitIpc();
+    registerBuildIpc();
     createWindow();
 
     // Handle a deep link present at first launch (Windows/Linux).

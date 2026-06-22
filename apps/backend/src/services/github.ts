@@ -88,10 +88,18 @@ export async function getRepoTree(
   fullName: string,
   branch: string,
 ): Promise<RepoTreeNode[]> {
-  const data = await gh<{ tree: GitHubTreeEntry[]; truncated: boolean }>(
-    `/repos/${fullName}/git/trees/${branch}?recursive=1`,
-    token,
-  );
+  let data: { tree: GitHubTreeEntry[]; truncated: boolean };
+  try {
+    data = await gh<{ tree: GitHubTreeEntry[]; truncated: boolean }>(
+      `/repos/${fullName}/git/trees/${branch}?recursive=1`,
+      token,
+    );
+  } catch (err) {
+    // An empty repo (no commits) has no resolvable default-branch tree, so the
+    // GitHub API 404s. Treat that as "no files" rather than an error.
+    if (err instanceof AppError && err.statusCode === 404) return [];
+    throw err;
+  }
   return data.tree.map((entry) => {
     const segments = entry.path.split('/');
     return {

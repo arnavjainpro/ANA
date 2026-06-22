@@ -11,6 +11,7 @@ import { WorkspaceContent } from './components/WorkspaceContent';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
 import { useConversationStore } from './store/conversationStore';
+import { useBuildStore } from './store/buildStore';
 import { isIpcError } from './lib/ipc';
 
 export default function App(): JSX.Element {
@@ -31,6 +32,13 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (activeError) errorRef.current?.focus();
   }, [activeError]);
+
+  // Clear the Build undo stack when the app closes (session end).
+  useEffect(() => {
+    const handler = (): void => useBuildStore.getState().endSession();
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   useEffect(() => {
     void (async () => {

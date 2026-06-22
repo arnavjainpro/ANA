@@ -2,7 +2,7 @@ import { useUiStore } from '../store/uiStore';
 import { useRepoStore } from '../store/repoStore';
 import type { Mode } from '../../types';
 
-const MODES: Mode[] = ['Understand', 'Plan'];
+const MODES: Mode[] = ['Understand', 'Plan', 'Build'];
 
 export function TopBar(): JSX.Element {
   const activeMode = useUiStore((s) => s.activeMode);

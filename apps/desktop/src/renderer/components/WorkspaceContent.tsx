@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DiagramPanel } from '../panels/understand/DiagramPanel';
 import { WhiteboardPanel } from '../panels/plan/WhiteboardPanel';
+import { BuildPanel } from '../panels/build/BuildPanel';
 import { PanelSkeleton } from './PanelSkeleton';
 import { useUiStore } from '../store/uiStore';
 
@@ -70,8 +71,10 @@ export function WorkspaceContent(): JSX.Element {
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     >
-      {isPanelLoading ? (
+      {isPanelLoading && displayMode !== 'Build' ? (
         <PanelSkeleton />
+      ) : displayMode === 'Build' ? (
+        <BuildPanel />
       ) : displayMode === 'Plan' ? (
         <WhiteboardPanel />
       ) : (

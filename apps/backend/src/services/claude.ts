@@ -3,6 +3,7 @@ import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
 import type {
   AnaResponse,
+  BuildResponse,
   ConversationTurn,
   IntentClassification,
   Mode,
@@ -105,8 +106,49 @@ Rules:
 - If the user's request is too vague to generate a plan, ask one clarifying question in spoken and return empty arrays for stories, criteria, and tasks.
 - Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
 
+const BUILD_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person make changes to their codebase.
+
+Your job is to write the exact code changes needed to fulfil the user's request — nothing more, nothing less.
+
+You will receive:
+- The user's spoken request
+- The full current contents of the relevant file(s)
+- Relevant code chunks retrieved from the rest of the repo
+- Recent conversation history
+
+You must respond with a JSON object in this exact shape:
+{
+  "spoken": "<Ana's spoken confirmation — 1–2 sentences, plain speech, no code>",
+  "patches": [
+    {
+      "path": "<relative file path from repo root>",
+      "original": "<full original file contents, exactly as provided to you>",
+      "updated": "<full updated file contents with your changes applied>",
+      "summary": "<one sentence describing what changed in this file>"
+    }
+  ]
+}
+
+Rules:
+- Return the full file contents in both original and updated — not a diff, not a snippet.
+- original must be byte-for-byte identical to the file contents you were given. Do not modify it.
+- updated must be valid, working code. Do not leave placeholder comments like "// rest of file unchanged" — include everything.
+- Maximum 5 files per operation. If the change requires more, return zero patches and explain in spoken.
+- Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks.
+- Do not add dependencies (npm packages) — only modify existing files.
+- spoken must be plain speech. No code, no markdown, no file paths.
+- If the request is ambiguous, return zero patches and ask one clarifying question in spoken.
+- Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
+
 function systemPromptFor(mode: Mode): string {
   return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
+}
+
+function formatFiles(files: { path: string; contents: string }[]): string {
+  if (files.length === 0) return '(no target files provided)';
+  return files
+    .map((f) => `--- FILE: ${f.path} ---\n${f.contents}`)
+    .join('\n\n');
 }
 
 /** Strip markdown fences and parse a JSON object out of a model reply. */
@@ -207,6 +249,40 @@ export async function generateResponse(params: {
   });
 
   return parseJsonObject<AnaResponse>(blockText(message));
+}
+
+/** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + file patches. */
+export async function generateBuildResponse(params: {
+  utterance: string;
+  intent: IntentClassification;
+  chunks: RetrievedChunk[];
+  history: ConversationTurn[];
+  files: { path: string; contents: string }[];
+}): Promise<BuildResponse> {
+  const { utterance, intent, chunks, history, files } = params;
+
+  const contextParts = [
+    `Full contents of the target file(s):\n${formatFiles(files)}`,
+    `Retrieved code chunks:\n${formatChunks(chunks)}`,
+    `Recent conversation:\n${formatHistory(history)}`,
+    `Classified intent: ${JSON.stringify(intent)}`,
+    `User request: ${utterance}`,
+  ];
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 8000,
+    system: [
+      {
+        type: 'text',
+        text: BUILD_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  return parseJsonObject<BuildResponse>(blockText(message));
 }
 
 /** A short spoken fallback when a Claude call fails or times out. */
