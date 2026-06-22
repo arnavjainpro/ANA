@@ -15,16 +15,20 @@ export function TopBar(): JSX.Element {
   const selectedRepo = useRepoStore((s) => s.selectedRepo);
 
   return (
-    <header className="flex items-center justify-between border-b border-ana-border bg-ana-panel px-4 py-3 h-12">
+    <header
+      role="banner"
+      className="flex items-center justify-between border-b border-ana-border bg-ana-panel px-4 py-3 h-12"
+    >
       {/* Left: Sidebar toggle + Ana logo + repo name */}
       <div className="flex items-center gap-4">
         <button
           type="button"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="p-1 hover:bg-ana-hover rounded transition-colors text-ana-text-muted hover:text-ana-text"
+          aria-label="Toggle sidebar"
           title="Toggle sidebar"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -34,22 +38,29 @@ export function TopBar(): JSX.Element {
         )}
       </div>
 
-      {/* Center: Mode switcher */}
-      <div className="flex items-center gap-2">
-        {MODES.map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setMode(mode)}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-              mode === activeMode
-                ? 'bg-ana-accent text-ana-bg'
-                : 'text-ana-text-muted hover:text-ana-text hover:bg-ana-hover'
-            }`}
-          >
-            {mode}
-          </button>
-        ))}
+      {/* Center: Mode switcher (ARIA tabs controlling the workspace panel) */}
+      <div role="tablist" aria-label="Conversation mode" className="flex items-center gap-2">
+        {MODES.map((mode) => {
+          const selected = mode === activeMode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              role="tab"
+              id={`mode-tab-${mode}`}
+              aria-selected={selected}
+              aria-controls="ana-workspace"
+              onClick={() => setMode(mode)}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors duration-100 ease-in-out ${
+                selected
+                  ? 'bg-ana-accent text-ana-bg'
+                  : 'text-ana-text-muted hover:text-ana-text hover:bg-ana-hover'
+              }`}
+            >
+              {mode}
+            </button>
+          );
+        })}
       </div>
 
       {/* Right: Command palette + Status */}
@@ -58,9 +69,10 @@ export function TopBar(): JSX.Element {
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
           className="px-2 py-1 rounded text-xs text-ana-text-muted hover:text-ana-text hover:bg-ana-hover transition-colors flex items-center gap-1"
+          aria-label="Open command palette"
           title="Open command palette (Cmd+K)"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <span>Cmd+K</span>

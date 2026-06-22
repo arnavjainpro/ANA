@@ -23,6 +23,13 @@ interface UiState {
   setSidebarWidth: (width: number) => void;
   setShowAnaFace: (show: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
+
+  /**
+   * True while a Claude reasoning turn is in flight (Phases 4–5). Drives the
+   * right-panel skeleton + `aria-busy`. Set on turn start, cleared on payload.
+   */
+  isPanelLoading: boolean;
+  setPanelLoading: (loading: boolean) => void;
   
   // File viewer state
   openFiles: OpenFile[];
@@ -50,6 +57,9 @@ export const useUiStore = create<UiState>((set) => ({
   setSidebarWidth: (width) => set({ sidebarWidth: Math.max(200, Math.min(600, width)) }),
   setShowAnaFace: (show) => set({ showAnaFace: show }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+  isPanelLoading: false,
+  setPanelLoading: (isPanelLoading) => set({ isPanelLoading }),
   
   // File viewer
   openFiles: [],

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTree } from './components/FileTree';
@@ -6,23 +6,31 @@ import { AnaConversation } from './components/AnaConversation';
 import { Composer } from './components/Composer';
 import { FileViewer } from './components/FileViewer';
 import { CommandPalette } from './components/CommandPalette';
-import { DiagramPanel } from './panels/understand/DiagramPanel';
-import { WhiteboardPanel } from './panels/plan/WhiteboardPanel';
+import { IndexingProgress } from './components/IndexingProgress';
+import { WorkspaceContent } from './components/WorkspaceContent';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
 import { useConversationStore } from './store/conversationStore';
 import { isIpcError } from './lib/ipc';
 
 export default function App(): JSX.Element {
-  const activeMode = useUiStore((s) => s.activeMode);
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
+  const isPanelLoading = useUiStore((s) => s.isPanelLoading);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
+  const sessionStarting = useConversationStore((s) => s.sessionStarting);
   const repoError = useRepoStore((s) => s.error);
   const { openFiles } = useUiStore();
-  
+
   const [centerWidth, setCenterWidth] = useState(40);
   const [dragging, setDragging] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const activeError = error ?? repoError;
+
+  // Move focus to the error message whenever one appears (OAuth / index errors).
+  useEffect(() => {
+    if (activeError) errorRef.current?.focus();
+  }, [activeError]);
 
   useEffect(() => {
     void (async () => {
@@ -73,7 +81,10 @@ export default function App(): JSX.Element {
 
       <div id="main-content" className="flex flex-1 min-h-0 overflow-hidden">
         {sidebarOpen && (
-          <aside className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0">
+          <aside
+            aria-label="Repository"
+            className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0"
+          >
             <ConnectPanel />
             <div className="flex-1 overflow-auto">
               <FileTree />
@@ -81,7 +92,9 @@ export default function App(): JSX.Element {
           </aside>
         )}
 
-        <section
+        <aside
+          aria-label="Ana"
+          aria-busy={sessionStarting}
           className="flex flex-col bg-ana-panel border-r border-ana-border overflow-hidden"
           style={{ width: `${centerWidth}%` }}
         >
@@ -89,32 +102,47 @@ export default function App(): JSX.Element {
             <AnaConversation />
           </div>
           <Composer />
-        </section>
+        </aside>
 
         <div
+          aria-hidden="true"
           onMouseDown={handleMouseDown}
           className={`w-1 bg-ana-border hover:bg-ana-accent/50 cursor-col-resize transition-colors ${
             dragging ? 'bg-ana-accent/50' : ''
           }`}
         />
 
-        <section className="flex-1 min-h-0 overflow-hidden bg-ana-bg">
-          {activeMode === 'Plan' ? <WhiteboardPanel /> : <DiagramPanel />}
-        </section>
+        <main
+          id="ana-workspace"
+          aria-label="Workspace"
+          aria-busy={isPanelLoading}
+          className="relative flex-1 min-h-0 overflow-hidden bg-ana-bg"
+        >
+          <IndexingProgress />
+          <WorkspaceContent />
+        </main>
 
         {openFiles.length > 0 && (
           <>
-            <div className="w-1 bg-ana-border" />
-            <aside className="w-80 flex-shrink-0 border-l border-ana-border bg-ana-panel overflow-hidden">
+            <div aria-hidden="true" className="w-1 bg-ana-border" />
+            <aside
+              aria-label="Open files"
+              className="w-80 flex-shrink-0 border-l border-ana-border bg-ana-panel overflow-hidden"
+            >
               <FileViewer />
             </aside>
           </>
         )}
       </div>
 
-      {(error || repoError) && (
-        <div className="border-t border-red-900/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
-          {error ?? repoError}
+      {activeError && (
+        <div
+          ref={errorRef}
+          tabIndex={-1}
+          aria-live="polite"
+          className="border-t border-red-900/30 bg-red-950/20 px-4 py-2 text-sm text-red-400"
+        >
+          {activeError}
         </div>
       )}
 

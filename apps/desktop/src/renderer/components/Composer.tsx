@@ -13,7 +13,7 @@ export function Composer(): JSX.Element {
   const { history, processing, setProcessing, appendUserTurn, applyResult, setError } =
     useConversationStore();
   const { repoId, selectedRepo, indexStatus } = useRepoStore();
-  const { activeMode, modeLocked, setMode } = useUiStore();
+  const { activeMode, modeLocked, setMode, setPanelLoading } = useUiStore();
 
   const ready = repoId !== null && indexStatus === 'ready';
 
@@ -25,6 +25,8 @@ export function Composer(): JSX.Element {
     setError(null);
     appendUserTurn(utterance);
     setProcessing(true);
+    // The right panel shows its skeleton while the Claude turn is in flight.
+    setPanelLoading(true);
 
     const result = await window.ana.conversation.turn({
       repoId,
@@ -35,6 +37,7 @@ export function Composer(): JSX.Element {
     });
 
     setProcessing(false);
+    setPanelLoading(false);
     if (isIpcError(result)) {
       setError(result.error);
       return;
@@ -65,10 +68,13 @@ export function Composer(): JSX.Element {
           type="button"
           onClick={() => void send()}
           disabled={!ready || processing || !text.trim()}
+          aria-disabled={!ready || processing || !text.trim()}
+          aria-busy={processing}
+          aria-label="Send message"
           className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {processing ? (
-            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m0 0h6" />
             </svg>
           ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import { useConversationStore } from '../../store/conversationStore';
+import { FadeIn } from '../../components/FadeIn';
 
 mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
 
@@ -27,6 +28,12 @@ export function DiagramPanel(): JSX.Element {
       .then(({ svg }) => {
         if (!cancelled) {
           el.innerHTML = svg;
+          // Expose the rendered diagram to assistive tech as a single image.
+          const rendered = el.querySelector('svg');
+          if (rendered) {
+            rendered.setAttribute('role', 'img');
+            rendered.setAttribute('aria-label', 'Architecture diagram');
+          }
           setError(null);
         }
       })
@@ -41,15 +48,15 @@ export function DiagramPanel(): JSX.Element {
   }, [diagram]);
 
   return (
-    <div className="flex h-full flex-col bg-ana-bg">
+    <FadeIn className="flex h-full flex-col bg-ana-bg">
       <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-        <h2 className="text-lg font-semibold text-ana-text">Architecture</h2>
+        <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Architecture</h2>
         <p className="mt-1 text-xs text-ana-text-muted">System structure and data flow</p>
       </div>
       <div className="flex flex-1 items-center justify-center overflow-auto p-6">
         {!diagram ? (
           <div className="text-center">
-            <svg className="w-12 h-12 mx-auto text-ana-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-12 h-12 mx-auto text-ana-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             <p className="text-sm text-ana-text-muted">
@@ -65,6 +72,6 @@ export function DiagramPanel(): JSX.Element {
           <div ref={containerRef} className="max-h-full max-w-full svg-container" />
         )}
       </div>
-    </div>
+    </FadeIn>
   );
 }
