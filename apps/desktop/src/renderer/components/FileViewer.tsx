@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRepoStore } from '../store/repoStore';
 import { useUiStore } from '../store/uiStore';
 
 /**
@@ -7,30 +8,82 @@ import { useUiStore } from '../store/uiStore';
  */
 export function FileViewer(): JSX.Element {
   const { openFiles, activeFileIndex, closeFile, setActiveFile } = useUiStore();
+  const { selectedRepo } = useRepoStore();
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const activeFile = activeFileIndex !== null ? openFiles[activeFileIndex] : null;
 
   // Load file content when active file changes
   useEffect(() => {
-    if (!activeFile || fileContents[activeFile.path]) return;
+    if (!activeFile || !selectedRepo || fileContents[activeFile.path]) return;
 
     setLoading(true);
-    // TODO: Fetch file content from backend
-    // For now, show a placeholder
-    setFileContents((prev) => ({
-      ...prev,
-      [activeFile.path]: `// File: ${activeFile.path}\n// Content would be loaded from the repo\n\n(File viewer coming soon)`,
-    }));
-    setLoading(false);
-  }, [activeFile, fileContents]);
+    setError(null);
+
+    window.ana.repo
+      .file(selectedRepo.full_name, activeFile.path)
+      .then((result) => {
+        if ('error' in result) {
+          setError(result.error);
+          setFileContents((prev) => ({
+            ...prev,
+            [activeFile.path]: `// Error: ${result.error}`,
+          }));
+        } else {
+          setFileContents((prev) => ({
+            ...prev,
+            [activeFile.path]: result.content,
+          }));
+        }
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Failed to load file';
+        setError(msg);
+        setFileContents((prev) => ({
+          ...prev,
+          [activeFile.path]: `// Error: ${msg}`,
+        }));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [activeFile, selectedRepo, fileContents]);
 
   if (openFiles.length === 0) {
     return <></>;
   }
 
   const activeContent = activeFile ? fileContents[activeFile.path] : '';
+
+  // Simple syntax highlighting based on file extension
+  const getLanguage = (path: string): string => {
+    const ext = path.split('.').pop()?.toLowerCase() || '';
+    const langMap: Record<string, string> = {
+      ts: 'typescript',
+      tsx: 'typescript',
+      js: 'javascript',
+      jsx: 'javascript',
+      py: 'python',
+      java: 'java',
+      cpp: 'cpp',
+      c: 'c',
+      rs: 'rust',
+      go: 'go',
+      rb: 'ruby',
+      php: 'php',
+      json: 'json',
+      yaml: 'yaml',
+      yml: 'yaml',
+      html: 'html',
+      css: 'css',
+      sql: 'sql',
+      sh: 'shell',
+      bash: 'shell',
+    };
+    return langMap[ext] || 'plaintext';
+  };
 
   return (
     <div className="flex h-full flex-col bg-ana-panel border-l border-ana-border overflow-hidden">
@@ -67,12 +120,36 @@ export function FileViewer(): JSX.Element {
       <div className="flex-1 overflow-auto bg-ana-bg">
         {loading ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-ana-text-muted">Loading…</p>
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-ana-accent border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-ana-text-muted">Loading…</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="text-sm text-ana-text-muted mb-2">Failed to load file</p>
+              <p className="text-xs text-ana-text-muted">{error}</p>
+            </div>
           </div>
         ) : activeFile ? (
-          <pre className="p-4 text-xs font-mono text-ana-text whitespace-pre-wrap break-words">
-            <code>{activeContent}</code>
-          </pre>
+          <div className="h-full flex flex-col">
+            {/* File path info */}
+            <div className="px-4 py-2 border-b border-ana-border bg-ana-panel text-xs text-ana-text-muted">
+              {activeFile.path} <span className="text-ana-accent ml-2">({getLanguage(activeFile.path)})</span>
+            </div>
+            {/* Line numbers + content */}
+            <pre className="flex-1 p-4 text-xs font-mono text-ana-text whitespace-pre-wrap break-words overflow-auto">
+              <code>
+                {activeContent.split('\n').map((line, i) => (
+                  <div key={i} className="flex">
+                    <span className="w-12 text-right pr-4 text-ana-text-muted select-none">{i + 1}</span>
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </code>
+            </pre>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-ana-text-muted">No file selected</p>

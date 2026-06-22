@@ -107,4 +107,21 @@ export function registerRepoIpc(): void {
       }
     },
   );
+
+  // Fetch file contents
+  ipcMain.handle(
+    'repo:file',
+    async (_e, fullName: string, filePath: string): Promise<IpcResult<{ content: string }>> => {
+      try {
+        const token = await requireToken();
+        return await backendJson<{ content: string }>('/repo/file', {
+          method: 'POST',
+          body: JSON.stringify({ fullName, filePath }),
+          githubToken: token,
+        });
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to fetch file.' };
+      }
+    },
+  );
 }

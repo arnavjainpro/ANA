@@ -94,6 +94,7 @@ export interface AnaApi {
   repo: {
     list: () => Promise<IpcResult<{ repos: RepoSummary[] }>>;
     tree: (fullName: string, branch: string) => Promise<IpcResult<{ tree: RepoTreeNode[] }>>;
+    file: (fullName: string, filePath: string) => Promise<IpcResult<{ content: string }>>;
     index: (fullName: string) => Promise<IpcResult<IndexDone>>;
     onIndexProgress: (cb: (p: IndexProgress) => void) => () => void;
   };
