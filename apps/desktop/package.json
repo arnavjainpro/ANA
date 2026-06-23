@@ -13,12 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@daily-co/daily-js": "^0.87.0",
-    "@daily-co/daily-react": "^0.25.2",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource/fira-code": "^5.2.7",
     "@monaco-editor/react": "^4.7.0",
-    "jotai": "^2.20.1",
     "mermaid": "^11.4.1",
     "monaco-editor": "^0.55.1",
     "react": "^18.3.1",

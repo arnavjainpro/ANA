@@ -64,9 +64,6 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // Let Ana's audio (rendered by DailyAudio in our page) play without a
-      // per-element user gesture — otherwise the call connects but is silent.
-      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 

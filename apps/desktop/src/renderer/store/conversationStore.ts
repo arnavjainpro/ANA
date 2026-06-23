@@ -19,8 +19,6 @@ interface ConversationState {
   error: string | null;
 
   setConversation: (id: string, url: string) => void;
-  /** Clear the active session (used when the user leaves the call). */
-  clearConversation: () => void;
   setProcessing: (processing: boolean) => void;
   setSessionStarting: (starting: boolean) => void;
   /** Append a user turn, capped at the last 6 turns sent to the backend. */
@@ -47,7 +45,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
   setConversation: (conversationId, conversationUrl) =>
     set({ conversationId, conversationUrl }),
-  clearConversation: () => set({ conversationId: null, conversationUrl: null }),
   setProcessing: (processing) => set({ processing }),
   setSessionStarting: (sessionStarting) => set({ sessionStarting }),
   appendUserTurn: (content) =>
