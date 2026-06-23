@@ -20,6 +20,15 @@ export function registerConversationIpc(): void {
     async (_e, req: TurnRequest): Promise<IpcResult<TurnResult>> => {
       try {
         const token = await loadGitHubToken();
+        // Keep the backend's "active repo" in sync so voice (Tavus) turns get
+        // the same RAG context as in-app turns.
+        if (req.repoId) {
+          void backendJson('/conversation/active-repo', {
+            method: 'POST',
+            body: JSON.stringify({ repoId: req.repoId, repoFullName: req.repoFullName }),
+            githubToken: token ?? undefined,
+          }).catch(() => undefined);
+        }
         return await backendJson<TurnResult>('/conversation/turn', {
           method: 'POST',
           body: JSON.stringify(req),

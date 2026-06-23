@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createConversation, endConversation } from '../services/tavus.js';
 import { processTurn, processBuildTurn, undoBuild, endBuildSession } from '../services/turn.js';
+import { setActiveRepo } from '../services/activeRepo.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
 import type { BuildTurnRequest, TurnRequest } from '../lib/types.js';
@@ -93,6 +94,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       return sendError(reply, err);
     }
   });
+
+  // Record which repo the client is working in, so the OpenAI-compatible
+  // /v1/chat/completions endpoint (called by Tavus, which can't pass a repoId)
+  // can run RAG against it.
+  app.post<{ Body: { repoId: string; repoFullName?: string } }>(
+    '/conversation/active-repo',
+    async (req, reply) => {
+      try {
+        const { repoId, repoFullName } = req.body ?? {};
+        if (!repoId) {
+          return reply.status(400).send({ error: 'Missing repoId', code: 'MISSING_FIELDS' });
+        }
+        let githubToken: string | undefined;
+        try {
+          githubToken = githubTokenFrom(req);
+        } catch {
+          githubToken = undefined;
+        }
+        setActiveRepo({ repoId, repoFullName, githubToken });
+        return reply.send({ ok: true });
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    },
+  );
 
   // Clear a session's undo history (GitHub disconnect / app close).
   app.post<{ Body: { sessionId: string } }>('/conversation/session/end', async (req, reply) => {
