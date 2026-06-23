@@ -140,6 +140,11 @@ export interface AnaApi {
   conversation: {
     start: () => Promise<IpcResult<{ conversationId: string; conversationUrl: string }>>;
     turn: (req: TurnRequest) => Promise<IpcResult<TurnResult>>;
+    /**
+     * Re-announce the active repo to the backend so the next voice (Tavus) turn
+     * has RAG context for it. Used by the "Refresh context" button after indexing.
+     */
+    syncRepo: (args: { repoId: string; repoFullName?: string }) => Promise<IpcResult<{ ok: true }>>;
   };
   build: {
     /** Open a folder picker, validate against the repo, persist, and return the path. */

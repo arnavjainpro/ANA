@@ -7,6 +7,7 @@ import { Composer } from './components/Composer';
 import { FileViewer } from './components/FileViewer';
 import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
+import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
@@ -26,6 +27,7 @@ export default function App(): JSX.Element {
   const [centerWidth, setCenterWidth] = useState(40);
   const [dragging, setDragging] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
+  const anaPaneRef = useRef<HTMLElement>(null);
   const activeError = error ?? repoError;
 
   // Move focus to the error message whenever one appears (OAuth / index errors).
@@ -63,8 +65,13 @@ export default function App(): JSX.Element {
       if (!container) return;
       
       const rect = container.getBoundingClientRect();
-      const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
-      
+      // Measure from the Ana pane's own left edge, not the container's: the
+      // container includes the fixed left sidebar (and the right file viewer),
+      // so using the container left over-counts the sidebar width and slams the
+      // pane to the clamp. The pane's actual left edge already accounts for it.
+      const anaLeft = anaPaneRef.current?.getBoundingClientRect().left ?? rect.left;
+      const newWidth = ((e.clientX - anaLeft) / rect.width) * 100;
+
       if (newWidth > 20 && newWidth < 80) {
         setCenterWidth(newWidth);
       }
@@ -101,11 +108,13 @@ export default function App(): JSX.Element {
         )}
 
         <aside
+          ref={anaPaneRef}
           aria-label="Ana"
           aria-busy={sessionStarting}
           className="flex flex-col bg-ana-panel border-r border-ana-border overflow-hidden"
           style={{ width: `${centerWidth}%` }}
         >
+          <RefreshContext />
           <div className="flex-1 min-h-0 overflow-hidden">
             <AnaConversation />
           </div>

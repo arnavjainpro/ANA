@@ -26,6 +26,8 @@ const api: AnaApi = {
   conversation: {
     start: () => ipcRenderer.invoke('conversation:start'),
     turn: (req: TurnRequest) => ipcRenderer.invoke('conversation:turn', req),
+    syncRepo: (args: { repoId: string; repoFullName?: string }) =>
+      ipcRenderer.invoke('conversation:syncRepo', args),
   },
   build: {
     selectRepoPath: (repoFullName: string) =>

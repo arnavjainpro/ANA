@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useConversationStore } from '../store/conversationStore';
+import { useRepoStore } from '../store/repoStore';
 import { isIpcError } from '../lib/ipc';
+
+/**
+ * When VITE_TAVUS_MANUAL_START is "false", Ana boots straight into the Tavus
+ * call on launch (only once GitHub is connected, so we never bill a session on
+ * an unauthed launch). Any other value — including the dev default — keeps the
+ * manual "Start Ana" button so we don't burn Tavus/API tokens while iterating.
+ */
+const MANUAL_START = import.meta.env.VITE_TAVUS_MANUAL_START !== 'false';
 
 /**
  * Mounts Ana's face + microphone.
@@ -16,6 +25,7 @@ import { isIpcError } from '../lib/ipc';
 export function AnaConversation(): JSX.Element {
   const { conversationUrl, sessionStarting, setConversation, setSessionStarting, setError } =
     useConversationStore();
+  const connected = useRepoStore((s) => s.connected);
   // Drives the placeholder → video opacity crossfade once the session mounts.
   const [videoShown, setVideoShown] = useState(false);
 
@@ -39,6 +49,14 @@ export function AnaConversation(): JSX.Element {
     }
     setConversation(result.conversationId, result.conversationUrl);
   }
+
+  // Auto-boot into the call when manual start is disabled and GitHub is already
+  // connected. Guarded against double-starts (no URL yet, not already starting).
+  useEffect(() => {
+    if (MANUAL_START || !connected || conversationUrl || sessionStarting) return;
+    void handleStart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, conversationUrl, sessionStarting]);
 
   if (conversationUrl) {
     return (

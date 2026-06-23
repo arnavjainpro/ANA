@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { classifyIntent, generateResponse, SPOKEN_FALLBACK } from '../services/claude.js';
+import { generateNoRepoReply, SPOKEN_FALLBACK } from '../services/claude.js';
 import { processTurn } from '../services/turn.js';
 import { getActiveRepo } from '../services/activeRepo.js';
-import type { ConversationTurn, Mode } from '../lib/types.js';
+import type { ConversationTurn } from '../lib/types.js';
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
 interface ChatMessage {
@@ -84,16 +84,9 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
         );
         spoken = result.spoken;
       } else {
-        // No repo selected yet — reply generally (no retrieval).
-        const intent = await classifyIntent(transcript, history);
-        const mode: Mode = intent.mode === 'Plan' ? 'Plan' : 'Understand';
-        const response = await generateResponse({
-          mode,
-          utterance: transcript,
-          intent,
-          chunks: [],
-          history,
-        });
+        // No repo connected/indexed yet — guide the user through connecting one
+        // instead of answering blindly about code Ana cannot see.
+        const response = await generateNoRepoReply({ utterance: transcript, history });
         spoken = response.spoken;
       }
     } catch {

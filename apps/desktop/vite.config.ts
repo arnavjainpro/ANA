@@ -10,6 +10,9 @@ import { resolve } from 'node:path';
 //  - renderer (React) → dist/
 export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
+  // Load .env from the desktop app root (not src/renderer) so renderer flags
+  // like VITE_TAVUS_MANUAL_START live alongside the app, not buried in source.
+  envDir: resolve(__dirname),
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
