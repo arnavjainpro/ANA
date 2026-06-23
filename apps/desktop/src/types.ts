@@ -147,6 +147,11 @@ export interface AnaApi {
      * has RAG context for it. Used by the "Refresh context" button after indexing.
      */
     syncRepo: (args: { repoId: string; repoFullName?: string }) => Promise<IpcResult<{ ok: true }>>;
+    /**
+     * Subscribe to right-panel updates pushed from voice (Tavus) turns, which
+     * bypass the renderer. Returns an unsubscribe function.
+     */
+    onPanelUpdate: (cb: (evt: TurnResult) => void) => () => void;
   };
   build: {
     /** Open a folder picker, validate against the repo, persist, and return the path. */

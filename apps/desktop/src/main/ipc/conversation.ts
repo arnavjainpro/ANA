@@ -1,7 +1,53 @@
-import { ipcMain } from 'electron';
-import { backendJson } from '../lib/backend.js';
+import { ipcMain, type BrowserWindow } from 'electron';
+import { backendJson, backendUrl } from '../lib/backend.js';
 import { loadGitHubToken } from '../lib/tokenStore.js';
 import type { IpcResult, TurnRequest, TurnResult } from '../../types.js';
+
+/**
+ * Hold a long-lived connection to the backend's panel-event stream and forward
+ * each event to the renderer. This is how the right panel updates for VOICE
+ * turns (Tavus turns hit the backend directly, bypassing the renderer). Mirrors
+ * the NDJSON streaming used by repo:index. Reconnects if the stream drops.
+ */
+export function startPanelStream(window: BrowserWindow): void {
+  let stopped = false;
+  window.on('closed', () => {
+    stopped = true;
+  });
+
+  const run = async (): Promise<void> => {
+    while (!stopped) {
+      try {
+        const res = await fetch(backendUrl('/conversation/events'));
+        if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line) as TurnResult;
+              if (!window.isDestroyed()) window.webContents.send('conversation:panel', evt);
+            } catch {
+              // ignore malformed line
+            }
+          }
+        }
+      } catch {
+        // Backend not up yet or the stream dropped — retry shortly.
+      }
+      if (!stopped) await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
+  void run();
+}
 
 /** Tell the backend which repo is active so Tavus voice turns get its RAG context. */
 async function announceActiveRepo(repoId: string, repoFullName?: string): Promise<void> {

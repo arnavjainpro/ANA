@@ -11,6 +11,8 @@ interface UiState {
   /** When false the mode follows Ana's intent classification automatically. */
   modeLocked: boolean;
   setMode: (mode: Mode) => void;
+  /** Set the active mode WITHOUT locking it (panel follows Ana on voice turns). */
+  setActiveMode: (mode: Mode) => void;
   toggleModeLock: () => void;
   
   // Sidebar and panel management
@@ -46,6 +48,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeMode: 'Understand',
   modeLocked: false,
   setMode: (mode) => set({ activeMode: mode, modeLocked: true }),
+  setActiveMode: (mode) => set({ activeMode: mode }),
   toggleModeLock: () => set((s) => ({ modeLocked: !s.modeLocked })),
   
   sidebarOpen: true,

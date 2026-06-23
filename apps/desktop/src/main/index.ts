@@ -7,6 +7,7 @@ import {
   registerConversationIpc,
   endActiveConversation,
   hasActiveConversation,
+  startPanelStream,
 } from './ipc/conversation.js';
 import { registerFilesystemIpc } from './ipc/filesystem.js';
 import { registerGitIpc } from './ipc/git.js';
@@ -71,6 +72,9 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../../dist/index.html'));
   }
+
+  // Relay backend panel updates (from voice turns) to this window's renderer.
+  startPanelStream(mainWindow);
 }
 
 // Single-instance lock so deep links reach the running app (Windows/Linux).

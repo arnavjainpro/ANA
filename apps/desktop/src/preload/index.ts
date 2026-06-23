@@ -4,6 +4,7 @@ import type {
   BuildTurnRequest,
   IndexProgress,
   TurnRequest,
+  TurnResult,
 } from '../types.js';
 
 // Expose ONLY named functions — never ipcRenderer itself.
@@ -29,6 +30,11 @@ const api: AnaApi = {
     turn: (req: TurnRequest) => ipcRenderer.invoke('conversation:turn', req),
     syncRepo: (args: { repoId: string; repoFullName?: string }) =>
       ipcRenderer.invoke('conversation:syncRepo', args),
+    onPanelUpdate: (cb: (evt: TurnResult) => void) => {
+      const listener = (_e: unknown, evt: TurnResult): void => cb(evt);
+      ipcRenderer.on('conversation:panel', listener);
+      return () => ipcRenderer.removeListener('conversation:panel', listener);
+    },
   },
   build: {
     selectRepoPath: (repoFullName: string) =>

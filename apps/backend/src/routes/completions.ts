@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { generateNoRepoReply, SPOKEN_FALLBACK } from '../services/claude.js';
 import { processTurn } from '../services/turn.js';
 import { getActiveRepo } from '../services/activeRepo.js';
+import { publishPanel } from '../services/panelBus.js';
 import type { ConversationTurn } from '../lib/types.js';
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
@@ -83,6 +84,14 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
           { githubToken: active.githubToken, repoFullName: active.repoFullName },
         );
         spoken = result.spoken;
+        // Push the visual payload to the desktop app — Tavus only takes `spoken`,
+        // so without this the right panel never updates for voice turns.
+        publishPanel({
+          mode: result.mode,
+          spoken: result.spoken,
+          panel: result.panel,
+          payload: result.payload,
+        });
       } else {
         // No repo connected/indexed yet — guide the user through connecting one
         // instead of answering blindly about code Ana cannot see.

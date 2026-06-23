@@ -18,6 +18,9 @@ import { isIpcError } from './lib/ipc';
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
+  const setActiveMode = useUiStore((s) => s.setActiveMode);
+  const setPanelLoading = useUiStore((s) => s.setPanelLoading);
+  const applyPanel = useConversationStore((s) => s.applyPanel);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
   const sessionStarting = useConversationStore((s) => s.sessionStarting);
@@ -41,6 +44,17 @@ export default function App(): JSX.Element {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  // Voice (Tavus) turns render their diagram/whiteboard via a pushed event,
+  // since they never pass through the renderer's text-turn path.
+  useEffect(() => {
+    const unsubscribe = window.ana.conversation.onPanelUpdate((evt) => {
+      setActiveMode(evt.mode);
+      applyPanel(evt);
+      setPanelLoading(false);
+    });
+    return unsubscribe;
+  }, [applyPanel, setActiveMode, setPanelLoading]);
 
   useEffect(() => {
     void (async () => {

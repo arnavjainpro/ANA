@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { createConversation, endConversation } from '../services/tavus.js';
 import { processTurn, processBuildTurn, undoBuild, endBuildSession } from '../services/turn.js';
 import { setActiveRepo } from '../services/activeRepo.js';
+import { subscribePanel } from '../services/panelBus.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
 import type { BuildTurnRequest, TurnRequest } from '../lib/types.js';
@@ -93,6 +94,28 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       return sendError(reply, err);
     }
+  });
+
+  // Stream right-panel updates from voice turns to the desktop app as NDJSON.
+  // The desktop main process holds this connection open for the app's lifetime
+  // and forwards each event to the renderer.
+  app.get('/conversation/events', async (_req, reply) => {
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const unsubscribe = subscribePanel((evt) => {
+      reply.raw.write(`${JSON.stringify(evt)}\n`);
+    });
+    // Newline keep-alive so idle proxies/tunnels don't drop the connection;
+    // blank lines are ignored by the client parser.
+    const keepAlive = setInterval(() => reply.raw.write('\n'), 25_000);
+    reply.raw.on('close', () => {
+      clearInterval(keepAlive);
+      unsubscribe();
+    });
   });
 
   // Record which repo the client is working in, so the OpenAI-compatible
