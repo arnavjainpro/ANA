@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createConversation, endConversation } from '../services/tavus.js';
 import { processTurn, processBuildTurn, undoBuild, endBuildSession } from '../services/turn.js';
-import { setActiveRepo } from '../services/activeRepo.js';
+import { setActiveRepo, clearActiveRepo } from '../services/activeRepo.js';
 import { subscribePanel } from '../services/panelBus.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
@@ -142,6 +142,17 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // Forget the active repo so Ana starts a session with no stale context
+  // (called on app launch and when switching repos before re-indexing).
+  app.post('/conversation/reset-context', async (_req, reply) => {
+    try {
+      clearActiveRepo();
+      return reply.send({ ok: true });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
 
   // Clear a session's undo history (GitHub disconnect / app close).
   app.post<{ Body: { sessionId: string } }>('/conversation/session/end', async (req, reply) => {

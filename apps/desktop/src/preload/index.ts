@@ -30,6 +30,7 @@ const api: AnaApi = {
     turn: (req: TurnRequest) => ipcRenderer.invoke('conversation:turn', req),
     syncRepo: (args: { repoId: string; repoFullName?: string }) =>
       ipcRenderer.invoke('conversation:syncRepo', args),
+    resetContext: () => ipcRenderer.invoke('conversation:resetContext'),
     onPanelUpdate: (cb: (evt: TurnResult) => void) => {
       const listener = (_e: unknown, evt: TurnResult): void => cb(evt);
       ipcRenderer.on('conversation:panel', listener);

@@ -21,3 +21,9 @@ export function setActiveRepo(repo: ActiveRepo): void {
 export function getActiveRepo(): ActiveRepo | null {
   return active;
 }
+
+/** Forget the active repo (e.g. fresh app launch, or switching repos) so Ana
+ *  doesn't answer from a stale project the user didn't select this session. */
+export function clearActiveRepo(): void {
+  active = null;
+}

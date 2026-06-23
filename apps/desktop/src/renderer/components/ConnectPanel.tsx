@@ -47,6 +47,9 @@ export function ConnectPanel(): JSX.Element {
     if (!repo) return;
     selectRepo(repo);
     setError(null);
+    // Drop the previous repo's context until this one is indexed + refreshed,
+    // so Ana doesn't keep answering about the repo you just switched away from.
+    void window.ana.conversation.resetContext();
 
     const treeResult = await window.ana.repo.tree(repo.full_name, repo.default_branch);
     if (isIpcError(treeResult)) {

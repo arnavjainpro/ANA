@@ -147,6 +147,8 @@ export interface AnaApi {
      * has RAG context for it. Used by the "Refresh context" button after indexing.
      */
     syncRepo: (args: { repoId: string; repoFullName?: string }) => Promise<IpcResult<{ ok: true }>>;
+    /** Forget the backend's active repo (fresh launch / repo switch). */
+    resetContext: () => Promise<IpcResult<{ ok: true }>>;
     /**
      * Subscribe to right-panel updates pushed from voice (Tavus) turns, which
      * bypass the renderer. Returns an unsubscribe function.

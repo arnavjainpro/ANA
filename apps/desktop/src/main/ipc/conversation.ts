@@ -140,6 +140,20 @@ export function registerConversationIpc(): void {
     },
   );
 
+  // Forget any active repo on the backend (fresh launch / repo switch) so Ana
+  // doesn't answer from a stale project the user didn't select this session.
+  ipcMain.handle(
+    'conversation:resetContext',
+    async (): Promise<IpcResult<{ ok: true }>> => {
+      try {
+        await backendJson('/conversation/reset-context', { method: 'POST', body: '{}' });
+        return { ok: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Could not reset context.' };
+      }
+    },
+  );
+
   // Explicit re-sync triggered by the "Refresh context" button after indexing,
   // so the user can immediately talk to a now-repo-aware Ana.
   ipcMain.handle(

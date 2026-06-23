@@ -56,6 +56,12 @@ export default function App(): JSX.Element {
     return unsubscribe;
   }, [applyPanel, setActiveMode, setPanelLoading]);
 
+  // Fresh launch: drop any active repo the backend remembered from a previous
+  // session so Ana doesn't answer from a project not selected this session.
+  useEffect(() => {
+    void window.ana.conversation.resetContext();
+  }, []);
+
   useEffect(() => {
     void (async () => {
       const status = await window.ana.auth.status();
