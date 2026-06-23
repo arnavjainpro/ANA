@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useConversationStore } from '../store/conversationStore';
 import { useRepoStore } from '../store/repoStore';
+import { CviConversation } from './CviConversation';
 import { isIpcError } from '../lib/ipc';
 
 /**
@@ -60,14 +61,13 @@ export function AnaConversation(): JSX.Element {
 
   if (conversationUrl) {
     return (
-      <iframe
-        title="Ana"
-        src={conversationUrl}
-        allow="camera; microphone; autoplay; display-capture"
-        className={`h-full w-full border-0 bg-transparent transition-opacity duration-[250ms] ease-out ${
+      <div
+        className={`h-full w-full transition-opacity duration-[250ms] ease-out ${
           videoShown ? 'opacity-100' : 'opacity-0'
         }`}
-      />
+      >
+        <CviConversation conversationUrl={conversationUrl} />
+      </div>
     );
   }
 
