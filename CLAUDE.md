@@ -8,9 +8,23 @@ authoritative.
 
 ## Current scope
 
-This build implements **Understand mode** and **Plan mode** only. Build, Debug, and
-Review modes do **not** exist yet — do not scaffold, stub, or create placeholder files
-for them.
+This build implements **Understand**, **Plan**, and **Build** modes. Debug and Review
+modes do **not** exist yet — do not scaffold, stub, or create placeholder files for them.
+
+**Build mode** lets Ana write code changes directly to the user's local working copy:
+- The user picks their local clone via a folder dialog on Build entry
+  (`build:selectRepoPath`); the path is validated against the connected repo's name and
+  persisted per-repo (`apps/desktop/src/main/lib/repoPaths.ts`).
+- Turn flow: `POST /conversation/build` (Haiku classify → RAG + GitHub-API target file
+  contents → Sonnet `generateBuildResponse` → `builder.validatePatches`) returns full-file
+  `FilePatch[]` + an `operationId`, recorded on a per-session in-memory undo stack
+  (`services/history.ts`, max 50). The desktop **main process** applies patches to disk
+  **atomically** (temp file + rename, `ipc/filesystem.ts`), re-enforcing all security
+  checks and that `original` still matches disk, then `git add`s them (never commits).
+- Undo: `POST /conversation/undo` pops + reverses the last op; the main process re-applies
+  to disk. Right panel = read-only Monaco editor + file tree + undo bar
+  (`renderer/panels/build/`). Max 5 files per operation; secrets/`.git`/`node_modules`
+  are never written.
 
 ## Monorepo layout (npm workspaces)
 

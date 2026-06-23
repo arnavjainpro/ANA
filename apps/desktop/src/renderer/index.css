@@ -11,5 +11,44 @@ body,
 
 body {
   @apply bg-ana-bg text-gray-100;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Bundled (self-hosted) so text renders identically across macOS and Windows;
+     the OS fonts remain only as a last-resort fallback. */
+  font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Loading-placeholder pulse (e.g. the Ana avatar while a session initializes).
+   Pure CSS so there is no JS animation loop. */
+@keyframes ana-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.ana-pulse {
+  animation: ana-pulse 1.5s ease-in-out infinite;
+}
+
+/* The indexing progress bar's fill width animates as a CSS transition only. */
+.ana-progress-fill {
+  transition: width 300ms ease;
+}
+
+/* Build mode: highlight lines changed by an applied patch (clears after 3s). */
+.ana-diff-added-line {
+  background: rgba(46, 160, 67, 0.18);
+}
+
+/* Respect users who ask for reduced motion: disable every non-essential
+   transition and animation without removing functionality. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }

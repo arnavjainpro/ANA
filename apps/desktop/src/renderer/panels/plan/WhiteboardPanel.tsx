@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useConversationStore } from '../../store/conversationStore';
+import { FadeIn } from '../../components/FadeIn';
 
 /** Interactive planning canvas: user stories, acceptance criteria, task list. */
 export function WhiteboardPanel(): JSX.Element {
@@ -8,16 +9,16 @@ export function WhiteboardPanel(): JSX.Element {
 
   if (!whiteboard || whiteboard.stories.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-ana-bg">
+      <FadeIn className="flex h-full flex-col bg-ana-bg">
         <div className="border-b border-ana-border px-6 py-4">
-          <h2 className="text-lg font-semibold text-ana-text">Plan</h2>
+          <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Plan</h2>
         </div>
         <div className="flex flex-1 items-center justify-center p-6">
           <p className="text-sm text-ana-text-muted">
             Describe a feature and Ana will build a plan here.
           </p>
         </div>
-      </div>
+      </FadeIn>
     );
   }
 
@@ -39,10 +40,10 @@ export function WhiteboardPanel(): JSX.Element {
   };
 
   return (
-    <div className="flex h-full flex-col bg-ana-bg">
+    <FadeIn className="flex h-full flex-col bg-ana-bg">
       {/* Header */}
       <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-        <h2 className="text-lg font-semibold text-ana-text">Plan</h2>
+        <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Plan</h2>
         <p className="mt-1 text-xs text-ana-text-muted">User stories & implementation tasks</p>
       </div>
 
@@ -60,11 +61,13 @@ export function WhiteboardPanel(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => toggleStory(story.id)}
+                  aria-expanded={isExpanded}
                   className="w-full px-6 py-4 text-left hover:bg-ana-hover transition-colors"
                 >
                   <div className="flex items-start gap-3">
                     <div className="pt-1">
                       <svg
+                        aria-hidden="true"
                         className={`w-4 h-4 text-ana-text-muted transition-transform ${
                           isExpanded ? 'rotate-90' : ''
                         }`}
@@ -147,6 +150,6 @@ export function WhiteboardPanel(): JSX.Element {
           })}
         </div>
       </div>
-    </div>
+    </FadeIn>
   );
 }

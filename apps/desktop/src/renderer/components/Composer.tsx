@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useConversationStore, recentHistory } from '../store/conversationStore';
 import { useRepoStore } from '../store/repoStore';
 import { useUiStore } from '../store/uiStore';
+import { useBuildStore } from '../store/buildStore';
 import { isIpcError } from '../lib/ipc';
 
 /**
@@ -10,21 +11,43 @@ import { isIpcError } from '../lib/ipc';
  */
 export function Composer(): JSX.Element {
   const [text, setText] = useState('');
-  const { history, processing, setProcessing, appendUserTurn, applyResult, setError } =
+  const { history, processing, setProcessing, appendUserTurn, pushAssistant, applyResult, setError } =
     useConversationStore();
   const { repoId, selectedRepo, indexStatus } = useRepoStore();
-  const { activeMode, modeLocked, setMode } = useUiStore();
+  const { activeMode, modeLocked, setMode, setPanelLoading } = useUiStore();
+  const buildRepoPath = useBuildStore((s) => s.repoPath);
+  const buildBusy = useBuildStore((s) => s.busy);
+  const runBuildTurn = useBuildStore((s) => s.runTurn);
 
-  const ready = repoId !== null && indexStatus === 'ready';
+  const buildMode = activeMode === 'Build';
+  const ready = buildMode ? buildRepoPath !== null : repoId !== null && indexStatus === 'ready';
+  const busy = processing || buildBusy;
 
   async function send(): Promise<void> {
     const utterance = text.trim();
-    if (!utterance || !repoId || processing) return;
+    if (!utterance || busy || !ready) return;
 
+    if (buildMode) {
+      setText('');
+      setError(null);
+      appendUserTurn(utterance);
+      const spoken = await runBuildTurn({
+        transcript: utterance,
+        history: recentHistory(history),
+        repoId: repoId ?? undefined,
+        repoFullName: selectedRepo?.full_name,
+      });
+      if (spoken) pushAssistant(spoken);
+      return;
+    }
+
+    if (!repoId) return;
     setText('');
     setError(null);
     appendUserTurn(utterance);
     setProcessing(true);
+    // The right panel shows its skeleton while the Claude turn is in flight.
+    setPanelLoading(true);
 
     const result = await window.ana.conversation.turn({
       repoId,
@@ -35,6 +58,7 @@ export function Composer(): JSX.Element {
     });
 
     setProcessing(false);
+    setPanelLoading(false);
     if (isIpcError(result)) {
       setError(result.error);
       return;
@@ -57,18 +81,29 @@ export function Composer(): JSX.Element {
               void send();
             }
           }}
-          placeholder={ready ? 'Ask Ana (Shift+Enter for new line)…' : 'Index a repo to begin…'}
-          disabled={!ready || processing}
+          placeholder={
+            ready
+              ? buildMode
+                ? 'Tell Ana what to change…'
+                : 'Ask Ana (Shift+Enter for new line)…'
+              : buildMode
+                ? 'Select your local folder to begin…'
+                : 'Index a repo to begin…'
+          }
+          disabled={!ready || busy}
           className="flex-1 rounded border border-ana-border bg-ana-bg px-3 py-2 text-sm text-ana-text outline-none placeholder:text-ana-text-muted focus:border-ana-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         />
         <button
           type="button"
           onClick={() => void send()}
-          disabled={!ready || processing || !text.trim()}
+          disabled={!ready || busy || !text.trim()}
+          aria-disabled={!ready || busy || !text.trim()}
+          aria-busy={busy}
+          aria-label="Send message"
           className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {processing ? (
-            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {busy ? (
+            <svg aria-hidden="true" className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m0 0h6" />
             </svg>
           ) : (

@@ -22,7 +22,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: resolve(__dirname, 'dist-electron/main'),
-            rollupOptions: { external: ['electron'] },
+            // simple-git shells out to the git binary and uses dynamic requires,
+            // so keep it external (loaded from node_modules) rather than bundled.
+            rollupOptions: { external: ['electron', 'simple-git'] },
           },
         },
       },

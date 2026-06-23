@@ -13,10 +13,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource/fira-code": "^5.2.7",
+    "@monaco-editor/react": "^4.7.0",
     "mermaid": "^11.4.1",
+    "monaco-editor": "^0.55.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-resizable-panels": "^4.11.2",
+    "simple-git": "^3.36.0",
     "zustand": "^5.0.1"
   },
   "devDependencies": {
@@ -24,6 +29,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "axe-core": "^4.12.1",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "postcss": "^8.4.47",

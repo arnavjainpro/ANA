@@ -11,6 +11,8 @@ interface ConversationState {
   conversationId: string | null;
   history: ConversationTurn[];
   processing: boolean;
+  /** True from `conversation/start` being called until the session mounts. */
+  sessionStarting: boolean;
   lastSpoken: string | null;
   diagram: DiagramPayload | null;
   whiteboard: WhiteboardPayload | null;
@@ -18,8 +20,11 @@ interface ConversationState {
 
   setConversation: (id: string, url: string) => void;
   setProcessing: (processing: boolean) => void;
+  setSessionStarting: (starting: boolean) => void;
   /** Append a user turn, capped at the last 6 turns sent to the backend. */
   appendUserTurn: (content: string) => void;
+  /** Append an assistant turn + set lastSpoken (used by Build mode replies). */
+  pushAssistant: (content: string) => void;
   applyResult: (result: TurnResult) => void;
   setError: (error: string | null) => void;
 }
@@ -29,6 +34,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
   conversationId: null,
   history: [],
   processing: false,
+  sessionStarting: false,
   lastSpoken: null,
   diagram: null,
   whiteboard: null,
@@ -37,8 +43,14 @@ export const useConversationStore = create<ConversationState>((set) => ({
   setConversation: (conversationId, conversationUrl) =>
     set({ conversationId, conversationUrl }),
   setProcessing: (processing) => set({ processing }),
+  setSessionStarting: (sessionStarting) => set({ sessionStarting }),
   appendUserTurn: (content) =>
     set((s) => ({ history: [...s.history, { role: 'user', content }] })),
+  pushAssistant: (content) =>
+    set((s) => ({
+      lastSpoken: content,
+      history: [...s.history, { role: 'assistant', content }],
+    })),
   applyResult: (result) =>
     set((s) => ({
       lastSpoken: result.spoken,

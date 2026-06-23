@@ -1,12 +1,30 @@
-import { classifyIntent, generateResponse, SPOKEN_FALLBACK } from './claude.js';
+import {
+  classifyIntent,
+  generateResponse,
+  generateBuildResponse,
+  SPOKEN_FALLBACK,
+} from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getFileContents } from './github.js';
-import type { AnaResponse, Mode, TurnRequest } from '../lib/types.js';
+import { validatePatches, generateOperationId } from './builder.js';
+import * as history from './history.js';
+import type {
+  AnaResponse,
+  BuildResult,
+  BuildTurnRequest,
+  Mode,
+  RetrievedChunk,
+  TurnRequest,
+  UndoResult,
+} from '../lib/types.js';
 import { SUPPORTED_MODES } from '../lib/types.js';
 
 export interface TurnResult extends AnaResponse {
   mode: Mode;
 }
+
+/** Spoken reply when Ana can't apply a change but it isn't an outright error. */
+const BUILD_FALLBACK = "I couldn't make that change just now — can you try rephrasing it?";
 
 /**
  * Process a single conversation turn end-to-end (spec §2 / §6):
@@ -67,4 +85,110 @@ export async function processTurn(
       payload: { mermaid: 'graph TD; A[Not enough context]' },
     };
   }
+}
+
+/**
+ * Pick the most likely target files for a Build change: the file the user named
+ * (if any), then the highest-similarity RAG chunk paths, capped at 5.
+ */
+function candidateTargets(intentTarget: string | null, chunks: RetrievedChunk[]): string[] {
+  const targets: string[] = [];
+  if (intentTarget && intentTarget.includes('.')) targets.push(intentTarget);
+  for (const chunk of chunks) {
+    if (!targets.includes(chunk.filePath)) targets.push(chunk.filePath);
+    if (targets.length >= 5) break;
+  }
+  return targets.slice(0, 5);
+}
+
+/**
+ * Process a Build-mode turn: classify → assemble context (RAG + full target
+ * file contents) → reasoning → validate → record on the undo stack. Returns the
+ * patches for the client to apply atomically to disk. Never throws — on any
+ * failure Ana returns a spoken fallback with zero patches.
+ */
+export async function processBuildTurn(
+  req: BuildTurnRequest,
+  options: { githubToken?: string },
+): Promise<BuildResult> {
+  const historyTurns = req.history ?? [];
+
+  try {
+    const intent = await classifyIntent(req.transcript, historyTurns);
+    const chunks = req.repoId ? await retrieveChunks(req.repoId, req.transcript) : [];
+
+    // Full contents of the most likely target files (ground truth Ana edits).
+    const targets = candidateTargets(intent.target, chunks);
+    const files: { path: string; contents: string }[] = [];
+    if (options.githubToken && req.repoFullName) {
+      for (const path of targets) {
+        try {
+          const contents = await getFileContents(options.githubToken, req.repoFullName, path);
+          files.push({ path, contents });
+        } catch {
+          // Non-fatal: skip a target we can't read.
+        }
+      }
+    }
+
+    const response = await generateBuildResponse({
+      utterance: req.transcript,
+      intent,
+      chunks,
+      history: historyTurns,
+      files,
+    });
+
+    // Ana intentionally produced no patches (clarifying question or refusal).
+    if (!response.patches || response.patches.length === 0) {
+      return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
+    }
+
+    const validation = await validatePatches(response.patches);
+    if (!validation.valid) {
+      return { spoken: validation.reason ?? BUILD_FALLBACK, patches: [], operationId: '' };
+    }
+
+    const first = response.patches[0];
+    if (!first) {
+      return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
+    }
+    const summary =
+      response.patches.length === 1
+        ? first.summary
+        : `${first.summary} (${response.patches.length} files)`;
+
+    const operationId = generateOperationId();
+    history.push(req.sessionId, {
+      operationId,
+      timestamp: Date.now(),
+      patches: response.patches,
+      summary,
+    });
+
+    return { spoken: response.spoken, patches: response.patches, operationId };
+  } catch (err) {
+    console.error('[build] processing failed:', err instanceof Error ? err.message : err);
+    return { spoken: SPOKEN_FALLBACK, patches: [], operationId: '' };
+  }
+}
+
+/**
+ * Pop the most recent operation for a session and return its patches reversed
+ * (original ↔ updated) so the client can roll the change back on disk.
+ */
+export function undoBuild(sessionId: string): UndoResult {
+  const op = history.pop(sessionId);
+  if (!op) return { spoken: 'There is nothing to undo.', patches: [] };
+  const reversed = op.patches.map((patch) => ({
+    ...patch,
+    original: patch.updated,
+    updated: patch.original,
+  }));
+  return { spoken: 'Undone.', patches: reversed };
+}
+
+/** Drop a session's undo history (called when the session ends). */
+export function endBuildSession(sessionId: string): void {
+  history.clear(sessionId);
 }

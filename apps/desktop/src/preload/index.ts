@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AnaApi,
+  BuildTurnRequest,
   IndexProgress,
   TurnRequest,
 } from '../types.js';
@@ -25,6 +26,23 @@ const api: AnaApi = {
   conversation: {
     start: () => ipcRenderer.invoke('conversation:start'),
     turn: (req: TurnRequest) => ipcRenderer.invoke('conversation:turn', req),
+  },
+  build: {
+    selectRepoPath: (repoFullName: string) =>
+      ipcRenderer.invoke('build:selectRepoPath', repoFullName),
+    getRepoPath: (repoFullName: string) => ipcRenderer.invoke('build:getRepoPath', repoFullName),
+    turn: (req: BuildTurnRequest) => ipcRenderer.invoke('build:turn', req),
+    undo: (sessionId: string, repoPath: string) =>
+      ipcRenderer.invoke('build:undo', sessionId, repoPath),
+    endSession: (sessionId: string) => ipcRenderer.invoke('build:endSession', sessionId),
+  },
+  fs: {
+    readFile: (repoPath: string, relPath: string) =>
+      ipcRenderer.invoke('fs:readFile', repoPath, relPath),
+    getRepoRoot: () => ipcRenderer.invoke('fs:getRepoRoot'),
+  },
+  git: {
+    status: (repoPath: string) => ipcRenderer.invoke('git:getStatus', repoPath),
   },
 };
 

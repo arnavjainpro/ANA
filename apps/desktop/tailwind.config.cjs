@@ -16,7 +16,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['Inter Variable', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['Fira Code', 'Monaco', 'monospace'],
       },
       fontSize: {

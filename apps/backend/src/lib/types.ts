@@ -54,6 +54,69 @@ export interface WhiteboardPayload {
 
 export type PanelType = 'diagram' | 'whiteboard';
 
+// --- Build mode ---------------------------------------------------------------
+
+/**
+ * A single file change. `original` and `updated` are FULL file contents (never a
+ * diff) so rollback is a trivial swap and patch-apply can never fail mid-hunk.
+ */
+export interface FilePatch {
+  /** Relative path from the repo root, e.g. "src/api/index.ts". */
+  path: string;
+  /** Full original file contents, byte-for-byte as Ana was given them. */
+  original: string;
+  /** Full updated file contents with Ana's change applied. */
+  updated: string;
+  /** One sentence describing what changed in this file. */
+  summary: string;
+}
+
+/** The structured Call 2 (Sonnet) response in Build mode. */
+export interface BuildResponse {
+  spoken: string;
+  patches: FilePatch[];
+}
+
+/** Build turn result returned to the client (adds the undo operation id). */
+export interface BuildResult extends BuildResponse {
+  /** UUID for this operation; '' when no patches were applied. */
+  operationId: string;
+}
+
+/** Reversed-patch payload returned by the undo endpoint. */
+export interface UndoResult {
+  spoken: string;
+  patches: FilePatch[];
+}
+
+/** Inbound request for a Build-mode turn. */
+export interface BuildTurnRequest {
+  sessionId: string;
+  /** Absolute local path to the user's working copy (used by the client). */
+  repoPath: string;
+  /** Latest user utterance (Tavus STT transcript). */
+  transcript: string;
+  history: ConversationTurn[];
+  /** Indexed repo id, used for RAG retrieval. */
+  repoId?: string;
+  /** Owner/name of the connected repo, used to fetch target file contents. */
+  repoFullName?: string;
+}
+
+/** A single recorded Build operation on the per-session undo stack. */
+export interface BuildOperation {
+  operationId: string;
+  timestamp: number;
+  patches: FilePatch[];
+  summary: string;
+}
+
+/** Result of validating a batch of patches before they touch disk. */
+export interface ValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
 /** The structured Call 2 (Sonnet) response. */
 export interface AnaResponse {
   spoken: string;
