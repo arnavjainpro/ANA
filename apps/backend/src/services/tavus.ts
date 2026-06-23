@@ -1,7 +1,17 @@
 import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
+import { getActiveRepo } from './activeRepo.js';
 
 const TAVUS_API = 'https://tavusapi.com/v2';
+
+// Spoken on join (Tavus `custom_greeting`), so Ana proactively says something
+// the moment the call connects instead of waiting for the user. Picked by repo
+// state so a first-time user is told how to connect one. This greeting is spoken
+// directly by Tavus and does NOT depend on our LLM-override backend being wired.
+const NO_REPO_GREETING =
+  "Hi, I'm Ana. I can't see your code just yet — connect a repository on the left, press Index so I can read it, then press Refresh, and I'll help you understand how it works or plan something new. Until then, ask me anything.";
+const REPO_GREETING =
+  "Hi, I'm Ana. I can see your project now — ask me how something works, or tell me what you'd like to build, and we'll figure it out together.";
 
 export interface TavusConversation {
   conversationId: string;
@@ -60,6 +70,7 @@ export async function createConversation(): Promise<TavusConversation> {
       replica_id: env.tavus.replicaId,
       persona_id: env.tavus.personaId,
       conversation_name: 'Ana session',
+      custom_greeting: getActiveRepo()?.repoId ? REPO_GREETING : NO_REPO_GREETING,
     }),
   });
 
