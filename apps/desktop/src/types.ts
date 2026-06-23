@@ -139,7 +139,21 @@ export interface AnaApi {
   };
   conversation: {
     start: () => Promise<IpcResult<{ conversationId: string; conversationUrl: string }>>;
+    /** End a Tavus conversation so it stops consuming a concurrency slot. */
+    end: (conversationId: string) => Promise<IpcResult<{ ok: true }>>;
     turn: (req: TurnRequest) => Promise<IpcResult<TurnResult>>;
+    /**
+     * Re-announce the active repo to the backend so the next voice (Tavus) turn
+     * has RAG context for it. Used by the "Refresh context" button after indexing.
+     */
+    syncRepo: (args: { repoId: string; repoFullName?: string }) => Promise<IpcResult<{ ok: true }>>;
+    /** Forget the backend's active repo (fresh launch / repo switch). */
+    resetContext: () => Promise<IpcResult<{ ok: true }>>;
+    /**
+     * Subscribe to right-panel updates pushed from voice (Tavus) turns, which
+     * bypass the renderer. Returns an unsubscribe function.
+     */
+    onPanelUpdate: (cb: (evt: TurnResult) => void) => () => void;
   };
   build: {
     /** Open a folder picker, validate against the repo, persist, and return the path. */

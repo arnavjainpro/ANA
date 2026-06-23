@@ -69,6 +69,13 @@ export const env = {
     replicaId: optional('TAVUS_REPLICA_ID', ''),
     personaId: optional('TAVUS_PERSONA_ID', ''),
   },
+
+  // Public HTTPS URL where Tavus can reach THIS backend (e.g. an ngrok/cloudflare
+  // tunnel in dev, or the deployed origin). When set, the persona's LLM layer is
+  // auto-pointed here on startup so Tavus routes turns through /v1/chat/completions.
+  ana: {
+    publicUrl: optional('ANA_PUBLIC_URL', ''),
+  },
 } as const;
 
 /** Assert a specific key is present at the point of use, with a clear message. */

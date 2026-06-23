@@ -3,7 +3,12 @@ import { join } from 'node:path';
 import { handleAuthCallback } from './github/oauth.js';
 import { registerAuthIpc } from './ipc/auth.js';
 import { registerRepoIpc } from './ipc/repo.js';
-import { registerConversationIpc } from './ipc/conversation.js';
+import {
+  registerConversationIpc,
+  endActiveConversation,
+  hasActiveConversation,
+  startPanelStream,
+} from './ipc/conversation.js';
 import { registerFilesystemIpc } from './ipc/filesystem.js';
 import { registerGitIpc } from './ipc/git.js';
 import { registerBuildIpc } from './ipc/build.js';
@@ -59,6 +64,9 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Let Ana's audio (rendered by DailyAudio in our page) play without a
+      // per-element user gesture — otherwise the call connects but is silent.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -67,6 +75,9 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../../dist/index.html'));
   }
+
+  // Relay backend panel updates (from voice turns) to this window's renderer.
+  startPanelStream(mainWindow);
 }
 
 // Single-instance lock so deep links reach the running app (Windows/Linux).
@@ -111,5 +122,15 @@ if (!gotLock) {
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  // End the active Tavus conversation before quitting so it doesn't linger and
+  // consume one of the account's concurrent-conversation slots.
+  let cleaningUp = false;
+  app.on('before-quit', (event) => {
+    if (cleaningUp || !hasActiveConversation()) return;
+    event.preventDefault();
+    cleaningUp = true;
+    void endActiveConversation().finally(() => app.quit());
   });
 }

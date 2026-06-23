@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth.js';
 import { repoRoutes } from './routes/repo.js';
 import { conversationRoutes } from './routes/conversation.js';
 import { completionsRoutes } from './routes/completions.js';
+import { ensurePersona } from './services/tavus.js';
 
 async function main(): Promise<void> {
   const app = Fastify({
@@ -24,6 +25,10 @@ async function main(): Promise<void> {
 
   await app.listen({ port: env.port, host: '0.0.0.0' });
   app.log.info(`Ana backend listening on :${env.port}`);
+
+  // Put the persona in a known-good state (native hosted LLM + clean prompt).
+  // Best-effort; never blocks boot.
+  await ensurePersona();
 }
 
 main().catch((err) => {

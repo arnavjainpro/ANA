@@ -17,6 +17,9 @@ build/
 .env.local
 *.env
 !.env.example
+# Desktop renderer flags only — no secrets live here (Vite exposes VITE_* to the
+# renderer, so secrets must never go in this file). Tracked for shared defaults.
+!apps/desktop/.env
 
 # Logs
 *.log

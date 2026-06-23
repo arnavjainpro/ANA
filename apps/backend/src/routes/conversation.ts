@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { createConversation, endConversation } from '../services/tavus.js';
 import { processTurn, processBuildTurn, undoBuild, endBuildSession } from '../services/turn.js';
-import { setActiveRepo } from '../services/activeRepo.js';
+import { setActiveRepo, clearActiveRepo } from '../services/activeRepo.js';
+import { subscribePanel } from '../services/panelBus.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
 import type { BuildTurnRequest, TurnRequest } from '../lib/types.js';
@@ -95,6 +96,28 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // Stream right-panel updates from voice turns to the desktop app as NDJSON.
+  // The desktop main process holds this connection open for the app's lifetime
+  // and forwards each event to the renderer.
+  app.get('/conversation/events', async (_req, reply) => {
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const unsubscribe = subscribePanel((evt) => {
+      reply.raw.write(`${JSON.stringify(evt)}\n`);
+    });
+    // Newline keep-alive so idle proxies/tunnels don't drop the connection;
+    // blank lines are ignored by the client parser.
+    const keepAlive = setInterval(() => reply.raw.write('\n'), 25_000);
+    reply.raw.on('close', () => {
+      clearInterval(keepAlive);
+      unsubscribe();
+    });
+  });
+
   // Record which repo the client is working in, so the OpenAI-compatible
   // /v1/chat/completions endpoint (called by Tavus, which can't pass a repoId)
   // can run RAG against it.
@@ -119,6 +142,17 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // Forget the active repo so Ana starts a session with no stale context
+  // (called on app launch and when switching repos before re-indexing).
+  app.post('/conversation/reset-context', async (_req, reply) => {
+    try {
+      clearActiveRepo();
+      return reply.send({ ok: true });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
 
   // Clear a session's undo history (GitHub disconnect / app close).
   app.post<{ Body: { sessionId: string } }>('/conversation/session/end', async (req, reply) => {

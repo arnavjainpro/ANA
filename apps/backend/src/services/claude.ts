@@ -140,6 +140,23 @@ Rules:
 - If the request is ambiguous, return zero patches and ask one clarifying question in spoken.
 - Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
 
+const NO_REPO_GUIDANCE_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for someone who is not technical. Right now you cannot see any of their code, because no repository has been connected and indexed yet.
+
+Your job in this reply is to gently let them know you can't see their project yet, and walk them through connecting one — in plain, spoken language.
+
+The steps they need to follow, in order:
+1. Connect their GitHub account using the Connect button on the left.
+2. Choose the repository they want to work on from the list.
+3. Press the Index button so you can read and understand the code.
+4. Press the Refresh button so you start using that project as context.
+
+Rules:
+- Reply with plain speech only — 2 to 4 short sentences. No lists, no bullet points, no markdown, no code, no file paths.
+- Be encouraging and calm. Never make them feel behind.
+- Naturally answer or acknowledge whatever they just said, then guide them toward connecting a repo so you can really help.
+- Do not invent details about their code — you cannot see it yet.
+- Respond with ONLY the spoken sentences. No JSON, no preamble, no quotation marks.`;
+
 function systemPromptFor(mode: Mode): string {
   return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
 }
@@ -283,6 +300,36 @@ export async function generateBuildResponse(params: {
   });
 
   return parseJsonObject<BuildResponse>(blockText(message));
+}
+
+/**
+ * Spoken-only reply for when no repo is connected/indexed yet. Used by the
+ * Tavus-facing completions endpoint so Ana tells the user how to connect a repo
+ * instead of answering blindly. One fast call; returns plain speech (no JSON).
+ */
+export async function generateNoRepoReply(params: {
+  utterance: string;
+  history: ConversationTurn[];
+}): Promise<{ spoken: string }> {
+  const { utterance, history } = params;
+  const message = await getClient().messages.create({
+    model: CLASSIFY_MODEL,
+    max_tokens: 256,
+    system: [
+      {
+        type: 'text',
+        text: NO_REPO_GUIDANCE_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: `Recent conversation:\n${formatHistory(history)}\n\nUser utterance: ${utterance}`,
+      },
+    ],
+  });
+  return { spoken: blockText(message) };
 }
 
 /** A short spoken fallback when a Claude call fails or times out. */

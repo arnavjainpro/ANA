@@ -19,6 +19,8 @@ interface ConversationState {
   error: string | null;
 
   setConversation: (id: string, url: string) => void;
+  /** Clear the active session (used when the user leaves the call). */
+  clearConversation: () => void;
   setProcessing: (processing: boolean) => void;
   setSessionStarting: (starting: boolean) => void;
   /** Append a user turn, capped at the last 6 turns sent to the backend. */
@@ -26,6 +28,9 @@ interface ConversationState {
   /** Append an assistant turn + set lastSpoken (used by Build mode replies). */
   pushAssistant: (content: string) => void;
   applyResult: (result: TurnResult) => void;
+  /** Like applyResult but only updates the panel payload (no history append) —
+   *  used for voice turns whose conversation history lives in Tavus, not here. */
+  applyPanel: (result: TurnResult) => void;
   setError: (error: string | null) => void;
 }
 
@@ -42,6 +47,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
   setConversation: (conversationId, conversationUrl) =>
     set({ conversationId, conversationUrl }),
+  clearConversation: () => set({ conversationId: null, conversationUrl: null }),
   setProcessing: (processing) => set({ processing }),
   setSessionStarting: (sessionStarting) => set({ sessionStarting }),
   appendUserTurn: (content) =>
@@ -58,6 +64,13 @@ export const useConversationStore = create<ConversationState>((set) => ({
       whiteboard:
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
       history: [...s.history, { role: 'assistant', content: result.spoken }],
+    })),
+  applyPanel: (result) =>
+    set((s) => ({
+      lastSpoken: result.spoken,
+      diagram: result.panel === 'diagram' ? (result.payload as DiagramPayload) : s.diagram,
+      whiteboard:
+        result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
     })),
   setError: (error) => set({ error }),
 }));
