@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { classifyIntent, generateResponse, SPOKEN_FALLBACK } from '../services/claude.js';
+import { processTurn } from '../services/turn.js';
+import { getActiveRepo } from '../services/activeRepo.js';
 import type { ConversationTurn, Mode } from '../lib/types.js';
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
@@ -72,16 +74,28 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
 
     let spoken: string;
     try {
-      const intent = await classifyIntent(transcript, history);
-      const mode: Mode = intent.mode === 'Plan' ? 'Plan' : 'Understand';
-      const response = await generateResponse({
-        mode,
-        utterance: transcript,
-        intent,
-        chunks: [],
-        history,
-      });
-      spoken = response.spoken;
+      const active = getActiveRepo();
+      if (active?.repoId) {
+        // Repo-aware: run the full pipeline (classify → RAG → reason) so Ana can
+        // actually talk about the repo the user is working in.
+        const result = await processTurn(
+          { repoId: active.repoId, utterance: transcript, history },
+          { githubToken: active.githubToken, repoFullName: active.repoFullName },
+        );
+        spoken = result.spoken;
+      } else {
+        // No repo selected yet — reply generally (no retrieval).
+        const intent = await classifyIntent(transcript, history);
+        const mode: Mode = intent.mode === 'Plan' ? 'Plan' : 'Understand';
+        const response = await generateResponse({
+          mode,
+          utterance: transcript,
+          intent,
+          chunks: [],
+          history,
+        });
+        spoken = response.spoken;
+      }
     } catch {
       // Never leave Tavus hanging — speak the fallback instead.
       spoken = SPOKEN_FALLBACK;

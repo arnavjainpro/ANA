@@ -8,6 +8,10 @@ out/
 release/
 build/
 
+# ...but NOT the Build-mode source panel (the broad `build/` rule above matches it)
+!apps/desktop/src/renderer/panels/build/
+!apps/desktop/src/renderer/panels/build/**
+
 # Env
 .env
 .env.local

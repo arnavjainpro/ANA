@@ -101,6 +101,15 @@ export function registerRepoIpc(): void {
 
         if (streamError) return { error: streamError };
         if (!done) return { error: 'Indexing finished without a result.' };
+
+        // Announce the now-indexed repo as active so voice (Tavus) turns, which
+        // hit the backend directly without a repoId, get RAG context for it.
+        await backendJson('/conversation/active-repo', {
+          method: 'POST',
+          body: JSON.stringify({ repoId: done.repoId, repoFullName: fullName }),
+          githubToken: token,
+        }).catch(() => undefined);
+
         return done;
       } catch (err) {
         return { error: err instanceof Error ? err.message : 'Indexing failed.' };
