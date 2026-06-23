@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   DailyProvider,
   DailyAudio,
   DailyVideo,
   useAudioTrack,
   useDaily,
+  useDailyEvent,
   useLocalSessionId,
   useParticipantIds,
+  useVideoTrack,
 } from '@daily-co/daily-react';
 import { useConversationStore } from '../store/conversationStore';
 
@@ -20,15 +22,18 @@ import { useConversationStore } from '../store/conversationStore';
  * full-bleed, and play the remote audio so Ana can be heard.
  */
 
-/** Joins the Daily room on mount and leaves on unmount. */
+/** Joins the Daily room if the provider didn't auto-join; leaves on unmount. */
 function CallJoiner({ url }: { url: string }): null {
   const daily = useDaily();
   useEffect(() => {
     if (!daily) return undefined;
+    // The provider auto-joins when given `url`; only join here if it hasn't
+    // (state 'new'), and guard against double-join on StrictMode remounts.
     const state = daily.meetingState();
-    // Guard against double-join (e.g. React StrictMode remounts in dev).
     if (state === 'new' || state === 'left-meeting') {
-      void daily.join({ url });
+      void daily.join({ url }).catch((err) => {
+        console.error('[cvi] join failed', err);
+      });
     }
     return () => {
       void daily.leave();
@@ -37,17 +42,12 @@ function CallJoiner({ url }: { url: string }): null {
   return null;
 }
 
-/** Mic mute toggle + leave, shown over the local PiP. */
+/** Mic, camera, and leave controls, shown over the video (bottom-left). */
 function CallControls(): JSX.Element {
   const daily = useDaily();
   const localId = useLocalSessionId();
-  const localAudio = useAudioTrack(localId);
-  const muted = localAudio.isOff;
-
-  const toggleMute = (): void => {
-    // setLocalAudio(enabled): enable when currently muted, disable otherwise.
-    daily?.setLocalAudio(muted);
-  };
+  const muted = useAudioTrack(localId).isOff;
+  const cameraOff = useVideoTrack(localId).isOff;
 
   const leave = async (): Promise<void> => {
     await daily?.leave();
@@ -57,14 +57,16 @@ function CallControls(): JSX.Element {
     clearConversation();
   };
 
+  const btn = 'rounded-full bg-black/40 p-2 text-white backdrop-blur transition-colors hover:bg-black/60';
+
   return (
     <div className="absolute bottom-3 left-3 flex items-center gap-2">
       <button
         type="button"
-        onClick={toggleMute}
+        onClick={() => daily?.setLocalAudio(muted)}
         aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
         aria-pressed={muted}
-        className="rounded-full bg-black/40 p-2 text-white backdrop-blur transition-colors hover:bg-black/60"
+        className={btn}
       >
         {muted ? (
           <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,6 +80,26 @@ function CallControls(): JSX.Element {
           </svg>
         )}
       </button>
+
+      <button
+        type="button"
+        onClick={() => daily?.setLocalVideo(cameraOff)}
+        aria-label={cameraOff ? 'Turn camera on' : 'Turn camera off'}
+        aria-pressed={cameraOff}
+        className={btn}
+      >
+        {cameraOff ? (
+          <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 7h7a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 3l18 18" />
+          </svg>
+        ) : (
+          <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 7h7a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
+          </svg>
+        )}
+      </button>
+
       <button
         type="button"
         onClick={() => void leave()}
@@ -98,6 +120,17 @@ function CallStage(): JSX.Element {
   const localId = useLocalSessionId();
   const remoteIds = useParticipantIds({ filter: 'remote' });
   const anaId = remoteIds[0];
+  const [error, setError] = useState<string | null>(null);
+
+  // Surface call/device failures on screen instead of a permanent "Connecting".
+  useDailyEvent(
+    'error',
+    useCallback((ev: { errorMsg?: string }) => setError(ev?.errorMsg ?? 'The call ran into an error.'), []),
+  );
+  useDailyEvent(
+    'camera-error',
+    useCallback(() => setError('Could not access your camera or microphone.'), []),
+  );
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-ana-panel">
@@ -110,8 +143,9 @@ function CallStage(): JSX.Element {
           className="h-full w-full object-cover"
         />
       ) : (
-        <div className="flex h-full items-center justify-center">
-          <p className="text-sm text-ana-text-muted">Connecting to Ana…</p>
+        <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
+          <p className="text-sm text-ana-text-muted">{error ? 'Couldn’t connect' : 'Connecting to Ana…'}</p>
+          {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
       )}
 
@@ -135,7 +169,8 @@ function CallStage(): JSX.Element {
 
 export function CviConversation({ conversationUrl }: { conversationUrl: string }): JSX.Element {
   return (
-    <DailyProvider>
+    // Passing `url` makes the provider create (and join) the call object.
+    <DailyProvider url={conversationUrl}>
       <CallJoiner url={conversationUrl} />
       <CallStage />
     </DailyProvider>
