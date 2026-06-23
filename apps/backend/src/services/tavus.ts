@@ -10,10 +10,34 @@ export interface TavusConversation {
 }
 
 /**
+ * End every conversation on the account that isn't already ended. Ana is
+ * single-user per Tavus account, so before starting a fresh session we reclaim
+ * any that leaked (app crash, lost in-memory id, etc.) — otherwise low-tier
+ * accounts immediately hit "maximum concurrent conversations". Best-effort:
+ * never throws, so a cleanup hiccup can't block a legitimate start.
+ */
+async function reclaimConcurrencySlots(): Promise<void> {
+  if (!env.tavus.apiKey) return;
+  try {
+    const res = await fetch(`${TAVUS_API}/conversations?limit=100`, {
+      headers: { 'x-api-key': env.tavus.apiKey },
+    });
+    if (!res.ok) return;
+    const data = (await res.json()) as {
+      data?: { conversation_id: string; status: string }[];
+    };
+    const lingering = (data.data ?? []).filter((c) => c.status !== 'ended');
+    await Promise.all(lingering.map((c) => endConversation(c.conversation_id)));
+  } catch {
+    // Best-effort cleanup — proceed to create regardless.
+  }
+}
+
+/**
  * Create a Tavus CVI conversation session. Ana's spoken replies are driven by
  * our backend via the persona's LLM override layer (configured on the persona
- * referenced by TAVUS_PERSONA_ID — see configureLlmOverride below), so the
- * face speaks the `spoken` value Claude returns.
+ * referenced by TAVUS_PERSONA_ID), so the face speaks the `spoken` value Claude
+ * returns. Any leaked prior sessions are reclaimed first.
  */
 export async function createConversation(): Promise<TavusConversation> {
   if (!env.tavus.apiKey || !env.tavus.replicaId || !env.tavus.personaId) {
@@ -23,6 +47,8 @@ export async function createConversation(): Promise<TavusConversation> {
       'Tavus is not configured. Set TAVUS_API_KEY, TAVUS_REPLICA_ID, TAVUS_PERSONA_ID.',
     );
   }
+
+  await reclaimConcurrencySlots();
 
   const res = await fetch(`${TAVUS_API}/conversations`, {
     method: 'POST',
