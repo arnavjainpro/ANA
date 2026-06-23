@@ -13,14 +13,62 @@ async function announceActiveRepo(repoId: string, repoFullName?: string): Promis
   });
 }
 
+// The Tavus account has a hard cap on concurrent conversations, so we must end a
+// session when it is replaced or the app quits — otherwise sessions leak and new
+// starts fail with "maximum concurrent conversations". The main process owns the
+// id (the renderer can be torn down without a chance to clean up).
+let activeConversationId: string | null = null;
+
+/** Whether a Tavus conversation is currently tracked (needs cleanup on quit). */
+export function hasActiveConversation(): boolean {
+  return activeConversationId !== null;
+}
+
+/** End the tracked Tavus conversation (if any). Safe to call repeatedly. */
+export async function endActiveConversation(): Promise<void> {
+  const id = activeConversationId;
+  if (!id) return;
+  activeConversationId = null;
+  await backendJson('/conversation/end', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId: id }),
+  }).catch(() => undefined);
+}
+
 export function registerConversationIpc(): void {
   ipcMain.handle(
     'conversation:start',
     async (): Promise<IpcResult<{ conversationId: string; conversationUrl: string }>> => {
       try {
-        return await backendJson('/conversation/start', { method: 'POST', body: '{}' });
+        // Never hold two sessions at once — drop the previous before starting.
+        await endActiveConversation();
+        const result = await backendJson<{ conversationId: string; conversationUrl: string }>(
+          '/conversation/start',
+          { method: 'POST', body: '{}' },
+        );
+        activeConversationId = result.conversationId;
+        return result;
       } catch (err) {
         return { error: err instanceof Error ? err.message : 'Could not start conversation.' };
+      }
+    },
+  );
+
+  // Explicit end (e.g. the renderer ending a session). Idempotent.
+  ipcMain.handle(
+    'conversation:end',
+    async (_e, conversationId?: string): Promise<IpcResult<{ ok: true }>> => {
+      try {
+        if (conversationId && conversationId === activeConversationId) {
+          activeConversationId = null;
+        }
+        await backendJson('/conversation/end', {
+          method: 'POST',
+          body: JSON.stringify({ conversationId: conversationId ?? null }),
+        });
+        return { ok: true };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Could not end conversation.' };
       }
     },
   );

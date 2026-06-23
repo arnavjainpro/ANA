@@ -139,6 +139,8 @@ export interface AnaApi {
   };
   conversation: {
     start: () => Promise<IpcResult<{ conversationId: string; conversationUrl: string }>>;
+    /** End a Tavus conversation so it stops consuming a concurrency slot. */
+    end: (conversationId: string) => Promise<IpcResult<{ ok: true }>>;
     turn: (req: TurnRequest) => Promise<IpcResult<TurnResult>>;
     /**
      * Re-announce the active repo to the backend so the next voice (Tavus) turn

@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { handleAuthCallback } from './github/oauth.js';
 import { registerAuthIpc } from './ipc/auth.js';
 import { registerRepoIpc } from './ipc/repo.js';
-import { registerConversationIpc } from './ipc/conversation.js';
+import {
+  registerConversationIpc,
+  endActiveConversation,
+  hasActiveConversation,
+} from './ipc/conversation.js';
 import { registerFilesystemIpc } from './ipc/filesystem.js';
 import { registerGitIpc } from './ipc/git.js';
 import { registerBuildIpc } from './ipc/build.js';
@@ -111,5 +115,15 @@ if (!gotLock) {
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  // End the active Tavus conversation before quitting so it doesn't linger and
+  // consume one of the account's concurrent-conversation slots.
+  let cleaningUp = false;
+  app.on('before-quit', (event) => {
+    if (cleaningUp || !hasActiveConversation()) return;
+    event.preventDefault();
+    cleaningUp = true;
+    void endActiveConversation().finally(() => app.quit());
   });
 }
