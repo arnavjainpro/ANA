@@ -92,6 +92,73 @@ export async function createConversation(): Promise<TavusConversation> {
   };
 }
 
+// Clean, plain-text persona prompt (the runtime source of truth for the auto
+// config below). Keep in sync with apps/backend/prompts/ana-persona.md.
+const PERSONA_SYSTEM_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for people who are not technical.
+
+Your personality:
+- Friendly, encouraging, and calm. You never make anyone feel behind.
+- You explain things in plain, everyday language. No jargon. If a technical term is unavoidable, you explain it in one short sentence.
+- You speak conversationally, in 2 to 4 sentences. You sound like a helpful person, not a manual.
+
+Your rules:
+- Never read out code, file paths, or symbols. Describe what they do in plain words instead.
+- Keep responses short and spoken-friendly. No lists, no markdown, no bullet points.
+- When you are unsure, say so honestly and ask one simple clarifying question.
+- Stay focused on helping the person understand and plan their software project.
+
+You are helping the user understand a codebase and plan new features. Be supportive and make them feel capable.`;
+
+/**
+ * Point the Tavus persona's LLM layer at this backend so Tavus routes every turn
+ * through our /v1/chat/completions (RAG + spoken reply), and reset a clean system
+ * prompt. Runs on startup when ANA_PUBLIC_URL is set — tunnel URLs rotate between
+ * dev sessions, so doing it on boot avoids re-running a script each time.
+ *
+ * Best-effort and cross-platform: it's a plain HTTPS PATCH, identical on
+ * Windows/macOS/Linux, and never throws (a failure just logs a warning).
+ */
+export async function configurePersonaFromEnv(): Promise<void> {
+  const publicUrl = env.ana.publicUrl;
+  if (!publicUrl) return; // opt-in; configure Tavus manually otherwise
+  if (!env.tavus.apiKey || !env.tavus.personaId) {
+    console.warn('[tavus] ANA_PUBLIC_URL set but TAVUS_API_KEY/TAVUS_PERSONA_ID missing — skipping persona config.');
+    return;
+  }
+
+  const base = `${publicUrl.replace(/\/+$/, '')}/v1`;
+  // Tavus persona update uses JSON Patch (RFC 6902).
+  const patch = [
+    { op: 'replace', path: '/system_prompt', value: PERSONA_SYSTEM_PROMPT },
+    {
+      op: 'replace',
+      path: '/layers/llm',
+      value: {
+        model: 'ana',
+        base_url: base,
+        api_key: 'not-used-our-endpoint-ignores-auth',
+        speculative_inference: true,
+      },
+    },
+  ];
+
+  try {
+    const res = await fetch(`${TAVUS_API}/personas/${env.tavus.personaId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': env.tavus.apiKey },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.warn(`[tavus] persona config failed (${res.status}): ${text.slice(0, 200)}`);
+      return;
+    }
+    console.log(`[tavus] persona LLM layer pointed at ${base}`);
+  } catch (err) {
+    console.warn('[tavus] persona config error:', err instanceof Error ? err.message : err);
+  }
+}
+
 /** End a Tavus conversation to stop metering. */
 export async function endConversation(conversationId: string): Promise<void> {
   if (!env.tavus.apiKey) return;
