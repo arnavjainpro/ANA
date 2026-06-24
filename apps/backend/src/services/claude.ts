@@ -165,7 +165,9 @@ Rules:
 // Voice persona for spoken turns. Plain speech only (no JSON) so the streamed
 // deltas can go straight to Tavus's TTS, and grounded in the retrieved chunks so
 // Ana actually talks about the user's code. Kept static for prompt caching.
-const SPEECH_SYSTEM_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for people who are not technical.
+// Exported because the Tavus persona reuses it as its system prompt — one source
+// of truth so the hosted-LLM fallback and our backend never drift apart.
+export const SPEECH_SYSTEM_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for people who are not technical.
 
 Your personality:
 - Friendly, encouraging, and calm. You never make anyone feel behind.
