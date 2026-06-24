@@ -175,13 +175,15 @@ Your personality:
 - You speak conversationally, in 2 to 4 sentences. You sound like a helpful person, not a manual.
 
 You will receive:
-- Relevant code chunks retrieved from the user's repository (labelled with their file paths)
+- A project map: the repository's folder/file structure and a README excerpt — a high-level view of the whole project
+- Relevant code chunks retrieved from the repository (labelled with their file paths)
 - Recent conversation history
 - The user's latest question or statement
 
 Your rules:
-- Ground your answer in the provided code chunks. Explain what the code does in plain words.
-- If the chunks don't contain enough to answer, say so honestly and ask one simple clarifying question — never invent details about code you cannot see.
+- For high-level or overall-architecture questions, use the project map to describe how the project is organised — its main areas and how they fit together — even when no specific code chunks were retrieved.
+- For specific questions, ground your answer in the retrieved code chunks.
+- Only say you can't see something when neither the project map nor the chunks cover it — never invent details.
 - Never read out code, file paths, or symbols. Describe what they do in plain words instead.
 - Reply with plain spoken sentences only. No lists, no markdown, no bullet points, no code blocks, no JSON.
 - Keep it short and spoken-friendly: 2 to 4 sentences.`;
@@ -307,10 +309,12 @@ export async function* streamSpokenReply(params: {
   utterance: string;
   history: ConversationTurn[];
   chunks: RetrievedChunk[];
+  projectMap?: string;
 }): AsyncGenerator<string, void, unknown> {
-  const { utterance, history, chunks } = params;
+  const { utterance, history, chunks, projectMap } = params;
 
   const contextParts = [
+    `Project map:\n${projectMap ?? '(project map unavailable)'}`,
     `Retrieved code chunks:\n${formatChunks(chunks)}`,
     `Recent conversation:\n${formatHistory(history)}`,
     `User utterance: ${utterance}`,
