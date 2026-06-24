@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { generateNoRepoReply, SPOKEN_FALLBACK } from '../services/claude.js';
+import {
+  generateNoRepoReply,
+  streamSpokenReply,
+  SPOKEN_FALLBACK,
+} from '../services/claude.js';
 import { processTurn } from '../services/turn.js';
+import { retrieveChunks } from '../services/retrieval.js';
 import { getActiveRepo } from '../services/activeRepo.js';
 import { publishPanel } from '../services/panelBus.js';
 import type { ConversationTurn } from '../lib/types.js';
@@ -36,9 +41,38 @@ function chunkLine(
 }
 
 /**
- * OpenAI-compatible endpoint Tavus calls on every conversation turn. It runs the
- * existing two-call Claude pipeline (Haiku classify → Sonnet reason) and streams
- * back only the `spoken` string, word by word, as an SSE chat.completion stream.
+ * Fire the full reasoning pipeline for its visual payload and publish it to the
+ * desktop panel — WITHOUT blocking speech. Tavus only consumes the spoken
+ * stream, so the diagram/whiteboard has to reach the app out-of-band. Runs
+ * detached (never awaited) so a slow Sonnet call can't delay the voice reply,
+ * and swallows its own errors so a panel failure never touches the stream.
+ */
+function publishPanelInBackground(
+  repoId: string,
+  transcript: string,
+  history: ConversationTurn[],
+  options: { githubToken?: string; repoFullName?: string },
+): void {
+  void processTurn({ repoId, utterance: transcript, history }, options)
+    .then((result) => {
+      publishPanel({
+        mode: result.mode,
+        spoken: result.spoken,
+        panel: result.panel,
+        payload: result.payload,
+      });
+    })
+    .catch((err) => {
+      console.error('[completions] panel publish failed:', err instanceof Error ? err.message : err);
+    });
+}
+
+/**
+ * OpenAI-compatible endpoint Tavus calls on every conversation turn. Speech is a
+ * single streaming Haiku call grounded in RAG chunks: deltas are forwarded to
+ * Tavus the instant they arrive, keeping time-to-first-word low and barge-in
+ * responsive. The heavier panel pipeline runs detached (see above), so the
+ * diagram never sits in the speech path.
  */
 export async function completionsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatCompletionRequest }>('/v1/chat/completions', async (req, reply) => {
@@ -73,41 +107,34 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
       model: req.body?.model ?? 'ana',
     };
 
-    let spoken: string;
+    // Opening chunk announces the assistant role (OpenAI streaming convention).
+    reply.raw.write(chunkLine(base, { role: 'assistant', content: '' }, null));
+
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
-        // Repo-aware: run the full pipeline (classify → RAG → reason) so Ana can
-        // actually talk about the repo the user is working in.
-        const result = await processTurn(
-          { repoId: active.repoId, utterance: transcript, history },
-          { githubToken: active.githubToken, repoFullName: active.repoFullName },
-        );
-        spoken = result.spoken;
-        // Push the visual payload to the desktop app — Tavus only takes `spoken`,
-        // so without this the right panel never updates for voice turns.
-        publishPanel({
-          mode: result.mode,
-          spoken: result.spoken,
-          panel: result.panel,
-          payload: result.payload,
+        // Retrieve grounding chunks once, then stream the spoken reply token by
+        // token. The visual panel is produced separately and out of band.
+        const chunks = await retrieveChunks(active.repoId, transcript);
+        publishPanelInBackground(active.repoId, transcript, history, {
+          githubToken: active.githubToken,
+          repoFullName: active.repoFullName,
         });
+        for await (const delta of streamSpokenReply({ utterance: transcript, history, chunks })) {
+          reply.raw.write(chunkLine(base, { content: delta }, null));
+        }
       } else {
         // No repo connected/indexed yet — guide the user through connecting one
         // instead of answering blindly about code Ana cannot see.
         const response = await generateNoRepoReply({ utterance: transcript, history });
-        spoken = response.spoken;
+        reply.raw.write(chunkLine(base, { content: response.spoken }, null));
       }
-    } catch {
+    } catch (err) {
       // Never leave Tavus hanging — speak the fallback instead.
-      spoken = SPOKEN_FALLBACK;
+      console.error('[completions] turn failed:', err instanceof Error ? err.message : err);
+      reply.raw.write(chunkLine(base, { content: SPOKEN_FALLBACK }, null));
     }
 
-    // Opening chunk announces the assistant role (OpenAI streaming convention).
-    reply.raw.write(chunkLine(base, { role: 'assistant', content: '' }, null));
-    for (const word of spoken.split(' ').filter(Boolean)) {
-      reply.raw.write(chunkLine(base, { content: `${word} ` }, null));
-    }
     // Terminal chunk: empty delta + finish_reason "stop", then the DONE sentinel.
     reply.raw.write(chunkLine(base, {}, 'stop'));
     reply.raw.write('data: [DONE]\n\n');
