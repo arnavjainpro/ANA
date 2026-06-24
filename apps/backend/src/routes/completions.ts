@@ -8,6 +8,7 @@ import { processTurn } from '../services/turn.js';
 import { retrieveChunks } from '../services/retrieval.js';
 import { getActiveRepo } from '../services/activeRepo.js';
 import { publishPanel } from '../services/panelBus.js';
+import { env } from '../lib/env.js';
 import type { ConversationTurn } from '../lib/types.js';
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
@@ -76,6 +77,16 @@ function publishPanelInBackground(
  */
 export async function completionsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatCompletionRequest }>('/v1/chat/completions', async (req, reply) => {
+    // This endpoint is publicly reachable (Tavus calls it over the internet), so
+    // require the shared secret when one is configured. Tavus sends the persona
+    // LLM layer's api_key as a Bearer token. Blank secret = check disabled (dev).
+    if (env.ana.llmSecret) {
+      const auth = req.headers.authorization ?? '';
+      if (auth !== `Bearer ${env.ana.llmSecret}`) {
+        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+      }
+    }
+
     const messages = req.body?.messages ?? [];
 
     // The latest user utterance is the last message with role === 'user'.
