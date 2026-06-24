@@ -6,6 +6,7 @@ import {
 } from '../services/claude.js';
 import { processTurn } from '../services/turn.js';
 import { retrieveChunks } from '../services/retrieval.js';
+import { getProjectMap } from '../services/projectMap.js';
 import { getActiveRepo } from '../services/activeRepo.js';
 import { publishPanel } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
@@ -124,14 +125,25 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
-        // Retrieve grounding chunks once, then stream the spoken reply token by
-        // token. The visual panel is produced separately and out of band.
-        const chunks = await retrieveChunks(active.repoId, transcript);
+        // Retrieve grounding chunks and the whole-project map in parallel (the
+        // map is cached after the first turn), then stream the spoken reply token
+        // by token. The visual panel is produced separately and out of band.
+        const [chunks, projectMap] = await Promise.all([
+          retrieveChunks(active.repoId, transcript),
+          active.githubToken && active.repoFullName
+            ? getProjectMap(active.repoFullName, active.githubToken)
+            : Promise.resolve(undefined),
+        ]);
         publishPanelInBackground(active.repoId, transcript, history, {
           githubToken: active.githubToken,
           repoFullName: active.repoFullName,
         });
-        for await (const delta of streamSpokenReply({ utterance: transcript, history, chunks })) {
+        for await (const delta of streamSpokenReply({
+          utterance: transcript,
+          history,
+          chunks,
+          projectMap,
+        })) {
           reply.raw.write(chunkLine(base, { content: delta }, null));
         }
       } else {
