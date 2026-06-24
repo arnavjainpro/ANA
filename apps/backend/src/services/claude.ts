@@ -175,15 +175,16 @@ Your personality:
 - You speak conversationally, in 2 to 4 sentences. You sound like a helpful person, not a manual.
 
 You will receive:
+- An architecture overview: a short written summary of what the project is and how it is organised
 - A project map: the repository's folder/file structure and a README excerpt — a high-level view of the whole project
 - Relevant code chunks retrieved from the repository (labelled with their file paths)
 - Recent conversation history
 - The user's latest question or statement
 
 Your rules:
-- For high-level or overall-architecture questions, use the project map to describe how the project is organised — its main areas and how they fit together — even when no specific code chunks were retrieved.
+- For high-level or overall-architecture questions, answer from the architecture overview and project map — describe how the project is organised, its main areas and how they fit together — even when no specific code chunks were retrieved.
 - For specific questions, ground your answer in the retrieved code chunks.
-- Only say you can't see something when neither the project map nor the chunks cover it — never invent details.
+- Only say you can't see something when none of the architecture overview, the project map, or the chunks cover it — never invent details.
 - Never read out code, file paths, or symbols. Describe what they do in plain words instead.
 - Reply with plain spoken sentences only. No lists, no markdown, no bullet points, no code blocks, no JSON.
 - Keep it short and spoken-friendly: 2 to 4 sentences.`;
@@ -310,10 +311,12 @@ export async function* streamSpokenReply(params: {
   history: ConversationTurn[];
   chunks: RetrievedChunk[];
   projectMap?: string;
+  architectureSummary?: string;
 }): AsyncGenerator<string, void, unknown> {
-  const { utterance, history, chunks, projectMap } = params;
+  const { utterance, history, chunks, projectMap, architectureSummary } = params;
 
   const contextParts = [
+    `Architecture overview:\n${architectureSummary ?? '(architecture overview unavailable)'}`,
     `Project map:\n${projectMap ?? '(project map unavailable)'}`,
     `Retrieved code chunks:\n${formatChunks(chunks)}`,
     `Recent conversation:\n${formatHistory(history)}`,
@@ -338,6 +341,54 @@ export async function* streamSpokenReply(params: {
       yield event.delta.text;
     }
   }
+}
+
+// Static system prompt for the one-time architecture summary (cached).
+const ARCH_SUMMARY_SYSTEM_PROMPT = `You are summarising a software repository for a voice assistant that helps non-technical people understand it.
+
+From the provided file structure, README, and key files, write a concise plain-language overview covering:
+- What the project is and what it does
+- Its main parts (the major areas or folders) and how they fit together
+- The technology stack at a high level
+
+Rules:
+- 4 to 8 sentences of plain prose. No markdown, no bullet lists, no code.
+- Be specific to THIS project; never invent features not evidenced by the inputs.
+- Write so it can be read aloud naturally.`;
+
+/**
+ * Generate a one-time architecture overview for a repo (run at index time, not
+ * per turn). Uses the reasoning model since quality matters and it runs once.
+ */
+export async function generateArchitectureSummary(params: {
+  repoFullName: string;
+  structure: string;
+  readme: string;
+  keyFiles: { path: string; contents: string }[];
+}): Promise<string> {
+  const { repoFullName, structure, readme, keyFiles } = params;
+
+  const contextParts = [
+    `Repository: ${repoFullName}`,
+    `File structure:\n${structure}`,
+    readme.trim() ? `README:\n${readme}` : 'README: (none found)',
+  ];
+  if (keyFiles.length > 0) contextParts.push(`Key files:\n${formatFiles(keyFiles)}`);
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 600,
+    system: [
+      {
+        type: 'text',
+        text: ARCH_SUMMARY_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  return blockText(message);
 }
 
 /** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + file patches. */

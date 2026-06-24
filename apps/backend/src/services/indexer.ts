@@ -4,6 +4,10 @@ import { chunkText } from '../lib/chunking.js';
 import { isIndexable } from '../lib/fileFilter.js';
 import { embedBatch } from './embeddings.js';
 import { getRepo, getRepoTree, getFileContents } from './github.js';
+import { generateArchitectureSummary } from './claude.js';
+import { renderRepoStructure, clearProjectMap } from './projectMap.js';
+import { setArchitectureSummary, clearArchitectureSummary } from './architectureSummary.js';
+import type { RepoTreeNode } from '../lib/types.js';
 
 const MAX_REPO_SIZE_KB = 50 * 1024; // 50MB hard cap (spec §7)
 const EMBED_BATCH_SIZE = 64;
@@ -117,5 +121,62 @@ export async function indexRepo(
     .update({ indexed_at: new Date().toISOString() })
     .eq('id', repoId);
 
+  // Re-index invalidates the cached structure/summary for this repo.
+  clearProjectMap(fullName);
+  clearArchitectureSummary(repoId);
+
+  // Generate and persist the one-time architecture overview. Best-effort: a
+  // failure here must not fail the index (the chunks are already stored).
+  await buildArchitectureSummary(token, fullName, repoId, tree);
+
   return { repoId, filesIndexed, chunksStored, filesSkipped };
+}
+
+/** Generate the architecture overview from the tree + README + package.json and
+ *  persist it on the repo row (and the in-memory cache). Never throws. */
+async function buildArchitectureSummary(
+  token: string,
+  fullName: string,
+  repoId: string,
+  tree: RepoTreeNode[],
+): Promise<void> {
+  try {
+    const structure = renderRepoStructure(tree);
+
+    let readme = '';
+    try {
+      readme = (await getFileContents(token, fullName, 'README.md')).slice(0, 4000);
+    } catch {
+      // No README — structure + key files still produce a useful summary.
+    }
+
+    const keyFiles: { path: string; contents: string }[] = [];
+    try {
+      keyFiles.push({
+        path: 'package.json',
+        contents: (await getFileContents(token, fullName, 'package.json')).slice(0, 3000),
+      });
+    } catch {
+      // Not a Node project, or no root package.json — fine.
+    }
+
+    const summary = await generateArchitectureSummary({
+      repoFullName: fullName,
+      structure,
+      readme,
+      keyFiles,
+    });
+    if (!summary.trim()) return;
+
+    await getSupabase()
+      .from('repos')
+      .update({ architecture_summary: summary })
+      .eq('id', repoId);
+    setArchitectureSummary(repoId, summary);
+  } catch (err) {
+    console.error(
+      '[indexer] architecture summary failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
