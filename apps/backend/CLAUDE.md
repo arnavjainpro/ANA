@@ -52,3 +52,26 @@ src/
 `schema.sql` must be run once against Supabase Postgres (needs the `vector` extension).
 `match_chunks(p_repo_id, query_embedding, match_count)` returns top-k chunks by cosine
 similarity scoped to one repo.
+
+## Tavus voice: making Ana code-aware (the public tunnel)
+
+For Ana to talk about the user's code, Tavus must call this backend's
+`/v1/chat/completions` on every voice turn. **Tavus runs in the cloud and cannot reach
+`http://localhost:8787`** — so in dev you must expose this backend over HTTPS and tell the
+backend its public URL via `ANA_PUBLIC_URL`:
+
+1. Start the backend (`npm run dev`).
+2. Start a tunnel to port 8787, e.g. `ngrok http 8787` (or a Cloudflare tunnel). Copy the
+   `https://…` forwarding URL.
+3. Set `ANA_PUBLIC_URL` to that URL in `.env` and restart the backend.
+
+On startup, `ensurePersona()` (`services/tavus.ts`) reads `ANA_PUBLIC_URL`:
+
+- **Set** → the persona's `/layers/llm` is pointed at `<ANA_PUBLIC_URL>/v1`, so Tavus routes
+  every turn through our streaming, RAG-grounded endpoint. Log line:
+  `[tavus] persona using custom LLM at …`.
+- **Blank** → falls back to Tavus's native hosted model (fast, but no codebase access).
+  Log line: `[tavus] persona using hosted LLM …`.
+
+The URL changes each time an `ngrok` free tunnel restarts — update `.env` and restart the
+backend when it does. (Production sets `ANA_PUBLIC_URL` to the deployed origin once.)
