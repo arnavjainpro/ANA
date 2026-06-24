@@ -13,6 +13,11 @@ import type {
 // Models per spec §5.2. Haiku for classification, Sonnet for reasoning.
 const CLASSIFY_MODEL = 'claude-haiku-4-5';
 const REASONING_MODEL = 'claude-sonnet-4-6';
+// Spoken voice turns use Haiku: fast enough to start talking within ~1s and
+// keep barge-in crisp. Kept as its own constant so it can be swapped to Sonnet
+// after measuring p95 latency (see speech-model evaluation) without touching
+// the classify/reasoning paths.
+const SPEECH_MODEL = 'claude-haiku-4-5';
 
 let anthropic: Anthropic | null = null;
 
@@ -157,6 +162,28 @@ Rules:
 - Do not invent details about their code — you cannot see it yet.
 - Respond with ONLY the spoken sentences. No JSON, no preamble, no quotation marks.`;
 
+// Voice persona for spoken turns. Plain speech only (no JSON) so the streamed
+// deltas can go straight to Tavus's TTS, and grounded in the retrieved chunks so
+// Ana actually talks about the user's code. Kept static for prompt caching.
+const SPEECH_SYSTEM_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for people who are not technical.
+
+Your personality:
+- Friendly, encouraging, and calm. You never make anyone feel behind.
+- You explain things in plain, everyday language. No jargon. If a technical term is unavoidable, you explain it in one short sentence.
+- You speak conversationally, in 2 to 4 sentences. You sound like a helpful person, not a manual.
+
+You will receive:
+- Relevant code chunks retrieved from the user's repository (labelled with their file paths)
+- Recent conversation history
+- The user's latest question or statement
+
+Your rules:
+- Ground your answer in the provided code chunks. Explain what the code does in plain words.
+- If the chunks don't contain enough to answer, say so honestly and ask one simple clarifying question — never invent details about code you cannot see.
+- Never read out code, file paths, or symbols. Describe what they do in plain words instead.
+- Reply with plain spoken sentences only. No lists, no markdown, no bullet points, no code blocks, no JSON.
+- Keep it short and spoken-friendly: 2 to 4 sentences.`;
+
 function systemPromptFor(mode: Mode): string {
   return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
 }
@@ -266,6 +293,45 @@ export async function generateResponse(params: {
   });
 
   return parseJsonObject<AnaResponse>(blockText(message));
+}
+
+/**
+ * Streamed spoken reply for a voice turn. Yields plain-text deltas as Haiku
+ * generates them so the caller can forward each one to Tavus immediately —
+ * keeping time-to-first-word low and barge-in responsive. Grounds the answer in
+ * the retrieved RAG chunks; returns speech only (no JSON, no panel payload).
+ */
+export async function* streamSpokenReply(params: {
+  utterance: string;
+  history: ConversationTurn[];
+  chunks: RetrievedChunk[];
+}): AsyncGenerator<string, void, unknown> {
+  const { utterance, history, chunks } = params;
+
+  const contextParts = [
+    `Retrieved code chunks:\n${formatChunks(chunks)}`,
+    `Recent conversation:\n${formatHistory(history)}`,
+    `User utterance: ${utterance}`,
+  ];
+
+  const stream = getClient().messages.stream({
+    model: SPEECH_MODEL,
+    max_tokens: 1024,
+    system: [
+      {
+        type: 'text',
+        text: SPEECH_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text;
+    }
+  }
 }
 
 /** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + file patches. */
