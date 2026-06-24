@@ -1,6 +1,7 @@
 import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
 import { getActiveRepo } from './activeRepo.js';
+import { SPEECH_SYSTEM_PROMPT } from './claude.js';
 
 const TAVUS_API = 'https://tavusapi.com/v2';
 
@@ -56,11 +57,11 @@ function repoContext(): string | undefined {
 }
 
 /**
- * Create a Tavus CVI conversation session. Speech is driven by Tavus's own
- * (hosted) LLM — fast and interruptible — configured on the persona. We give it
- * repo awareness via a one-time conversational_context briefing instead of
- * routing every turn through our backend. Any leaked prior sessions are
- * reclaimed first.
+ * Create a Tavus CVI conversation session. Speech is driven by the LLM the
+ * persona is configured with (see ensurePersona): our own streaming, RAG-grounded
+ * endpoint when ANA_PUBLIC_URL is set, otherwise Tavus's native hosted model. The
+ * one-time conversational_context briefing gives the native fallback some repo
+ * awareness. Any leaked prior sessions are reclaimed first.
  */
 export async function createConversation(): Promise<TavusConversation> {
   if (!env.tavus.apiKey || !env.tavus.replicaId || !env.tavus.personaId) {
@@ -109,32 +110,41 @@ export async function createConversation(): Promise<TavusConversation> {
   };
 }
 
-// Clean, plain-text persona prompt (the runtime source of truth for the auto
-// config below). Keep in sync with apps/backend/prompts/ana-persona.md.
-const PERSONA_SYSTEM_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for people who are not technical.
-
-Your personality:
-- Friendly, encouraging, and calm. You never make anyone feel behind.
-- You explain things in plain, everyday language. No jargon. If a technical term is unavoidable, you explain it in one short sentence.
-- You speak conversationally, in 2 to 4 sentences. You sound like a helpful person, not a manual.
-
-Your rules:
-- Never read out code, file paths, or symbols. Describe what they do in plain words instead.
-- Keep responses short and spoken-friendly. No lists, no markdown, no bullet points.
-- When you are unsure, say so honestly and ask one simple clarifying question.
-- Stay focused on helping the person understand and plan their software project.
-
-You are helping the user understand a codebase and plan new features. Be supportive and make them feel capable.`;
-
-// Tavus-hosted LLM that drives speech. Claude Haiku via Tavus keeps replies
-// fast and interruptible (barge-in) — routing through our own backend per turn
-// added seconds of latency and broke interruption, so we use the native model.
+// Tavus-hosted (native) LLM — the fallback when no public backend URL is set.
+// Fast and interruptible, but it only knows the one-time repo briefing; it can't
+// see the actual codebase. The custom LLM path below is preferred when available.
 const TAVUS_LLM_MODEL = 'tavus-claude-haiku-4.5';
 
+// Model name Tavus sends to our OpenAI-compatible endpoint when the custom LLM is
+// wired. Our backend picks its own model and ignores this, but Tavus requires the
+// field — keep it descriptive.
+const CUSTOM_LLM_MODEL = 'ana-voice';
+
 /**
- * Ensure the persona uses Tavus's native (hosted) LLM with our clean system
- * prompt. Run on startup so the persona is always in a known-good state — this
- * also clears any stale custom base_url/prompt left over from earlier builds.
+ * Build the persona's LLM layer. When ANA_PUBLIC_URL is set, point Tavus at our
+ * own streaming, RAG-grounded `/v1/chat/completions` so Ana can actually talk
+ * about the user's code; otherwise fall back to Tavus's native hosted model.
+ */
+function buildLlmLayer(): Record<string, unknown> {
+  const publicUrl = env.ana.publicUrl.replace(/\/$/, '');
+  if (publicUrl) {
+    return {
+      model: CUSTOM_LLM_MODEL,
+      base_url: `${publicUrl}/v1`,
+      // Tavus requires an api_key for a custom LLM. The endpoint does not verify
+      // it yet — KAN-9 wires a real shared secret on both sides.
+      api_key: 'ana-dev-key',
+    };
+  }
+  return { model: TAVUS_LLM_MODEL, speculative_inference: true };
+}
+
+/**
+ * Configure the persona's system prompt and LLM layer to a known-good state on
+ * startup. Uses the shared SPEECH_SYSTEM_PROMPT so the persona and our backend
+ * never drift, and points the LLM layer at our backend when ANA_PUBLIC_URL is
+ * set (else the native hosted model). Replacing the whole /layers/llm object
+ * also clears any stale custom base_url/api_key from earlier builds.
  *
  * Best-effort and cross-platform: a plain HTTPS PATCH (identical on
  * Windows/macOS/Linux) that never throws — a failure just logs a warning.
@@ -142,15 +152,11 @@ const TAVUS_LLM_MODEL = 'tavus-claude-haiku-4.5';
 export async function ensurePersona(): Promise<void> {
   if (!env.tavus.apiKey || !env.tavus.personaId) return;
 
-  // Tavus persona update uses JSON Patch (RFC 6902). Replacing the whole
-  // /layers/llm object drops any previous custom base_url/api_key.
+  const layer = buildLlmLayer();
+  // Tavus persona update uses JSON Patch (RFC 6902).
   const patch = [
-    { op: 'replace', path: '/system_prompt', value: PERSONA_SYSTEM_PROMPT },
-    {
-      op: 'replace',
-      path: '/layers/llm',
-      value: { model: TAVUS_LLM_MODEL, speculative_inference: true },
-    },
+    { op: 'replace', path: '/system_prompt', value: SPEECH_SYSTEM_PROMPT },
+    { op: 'replace', path: '/layers/llm', value: layer },
   ];
 
   try {
@@ -164,7 +170,11 @@ export async function ensurePersona(): Promise<void> {
       console.warn(`[tavus] persona config failed (${res.status}): ${text.slice(0, 200)}`);
       return;
     }
-    console.log(`[tavus] persona using hosted LLM ${TAVUS_LLM_MODEL}`);
+    const using =
+      'base_url' in layer
+        ? `custom LLM at ${String(layer.base_url)}`
+        : `hosted LLM ${TAVUS_LLM_MODEL}`;
+    console.log(`[tavus] persona using ${using}`);
   } catch (err) {
     console.warn('[tavus] persona config error:', err instanceof Error ? err.message : err);
   }
