@@ -73,8 +73,12 @@ export const env = {
   // Public HTTPS URL where Tavus can reach THIS backend (e.g. an ngrok/cloudflare
   // tunnel in dev, or the deployed origin). When set, the persona's LLM layer is
   // auto-pointed here on startup so Tavus routes turns through /v1/chat/completions.
+  // llmSecret is the bearer token Tavus must present on those calls — it is sent
+  // as the persona LLM layer's api_key and verified on the completions route.
+  // Leave blank to disable the check (dev convenience).
   ana: {
     publicUrl: optional('ANA_PUBLIC_URL', ''),
+    llmSecret: optional('ANA_LLM_SECRET', ''),
   },
 } as const;
 

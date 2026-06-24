@@ -131,9 +131,10 @@ function buildLlmLayer(): Record<string, unknown> {
     return {
       model: CUSTOM_LLM_MODEL,
       base_url: `${publicUrl}/v1`,
-      // Tavus requires an api_key for a custom LLM. The endpoint does not verify
-      // it yet — KAN-9 wires a real shared secret on both sides.
-      api_key: 'ana-dev-key',
+      // Sent as a Bearer token on every call; the completions route verifies it
+      // against ANA_LLM_SECRET. Tavus requires a non-empty api_key, so fall back
+      // to a placeholder when no secret is configured (the route skips the check).
+      api_key: env.ana.llmSecret || 'ana-dev-key',
     };
   }
   return { model: TAVUS_LLM_MODEL, speculative_inference: true };
