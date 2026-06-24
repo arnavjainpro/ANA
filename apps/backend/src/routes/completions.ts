@@ -7,6 +7,7 @@ import {
 import { processTurn } from '../services/turn.js';
 import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
+import { getArchitectureSummary } from '../services/architectureSummary.js';
 import { getActiveRepo } from '../services/activeRepo.js';
 import { publishPanel } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
@@ -128,11 +129,12 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
         // Retrieve grounding chunks and the whole-project map in parallel (the
         // map is cached after the first turn), then stream the spoken reply token
         // by token. The visual panel is produced separately and out of band.
-        const [chunks, projectMap] = await Promise.all([
+        const [chunks, projectMap, architectureSummary] = await Promise.all([
           retrieveChunks(active.repoId, transcript),
           active.githubToken && active.repoFullName
             ? getProjectMap(active.repoFullName, active.githubToken)
             : Promise.resolve(undefined),
+          getArchitectureSummary(active.repoId),
         ]);
         publishPanelInBackground(active.repoId, transcript, history, {
           githubToken: active.githubToken,
@@ -143,6 +145,7 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
           history,
           chunks,
           projectMap,
+          architectureSummary,
         })) {
           reply.raw.write(chunkLine(base, { content: delta }, null));
         }

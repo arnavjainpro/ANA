@@ -12,9 +12,13 @@ create table if not exists repos (
   head_sha      text,
   size_kb       integer not null default 0,
   indexed_at    timestamptz,
+  architecture_summary text,
   created_at    timestamptz not null default now(),
   unique (github_id)
 );
+
+-- Idempotent add for databases created before architecture_summary existed.
+alter table repos add column if not exists architecture_summary text;
 
 -- One row per embedded chunk. text-embedding-3-small is 1536-dim.
 create table if not exists chunks (

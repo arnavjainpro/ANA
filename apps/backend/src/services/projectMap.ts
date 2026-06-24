@@ -34,8 +34,10 @@ function isNoise(path: string): boolean {
   return path.split('/').some((segment) => EXCLUDED_SEGMENTS.has(segment));
 }
 
-/** Render the tree as a shallow, indented outline (dirs + files, bounded). */
-function renderTree(nodes: RepoTreeNode[]): string {
+/** Render the tree as a shallow, indented outline (dirs + files, bounded).
+ *  Exported so the indexer can reuse the same structure view when generating
+ *  the architecture summary. */
+export function renderRepoStructure(nodes: RepoTreeNode[]): string {
   const filtered = nodes
     .filter((n) => !isNoise(n.path) && n.path.split('/').length - 1 <= MAX_DEPTH)
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -75,7 +77,7 @@ export async function getProjectMap(
       // No README at the standard path — the tree alone is still useful.
     }
 
-    const parts = [`Repository: ${repoFullName}`, `File structure:\n${renderTree(tree)}`];
+    const parts = [`Repository: ${repoFullName}`, `File structure:\n${renderRepoStructure(tree)}`];
     if (readme.trim()) parts.push(`README (excerpt):\n${readme}`);
     const map = parts.join('\n\n');
 
