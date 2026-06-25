@@ -27,6 +27,24 @@ interface ChatCompletionRequest {
 
 type Delta = { role?: 'assistant'; content?: string };
 
+// Short, generic acknowledgements spoken the instant a turn starts, before the
+// RAG retrieval + first model token land — otherwise the user hears a few
+// seconds of dead air. Picked at random each turn so Ana doesn't repeat the same
+// line. The trailing space lets the real reply flow on naturally. Kept generic
+// so any answer can follow without the opener sounding wrong. This only goes to
+// the spoken SSE stream, never the right panel.
+const FILLERS = [
+  'Sure, let me take a look. ',
+  'Good question — one second. ',
+  'Let me check that for you. ',
+  'Alright, looking into it. ',
+  'Okay, let me see. ',
+] as const;
+
+function pickFiller(): string {
+  return FILLERS[Math.floor(Math.random() * FILLERS.length)] ?? FILLERS[0];
+}
+
 /** Emit one OpenAI-style chat.completion.chunk SSE line. */
 function chunkLine(
   base: { id: string; created: number; model: string },
@@ -126,6 +144,11 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
+        // Speak a short filler immediately so Ana starts talking while RAG
+        // retrieval and the first model token are still in flight — this hides
+        // the few seconds of dead air the Promise.all below would otherwise cost.
+        reply.raw.write(chunkLine(base, { content: pickFiller() }, null));
+
         // Retrieve grounding chunks and the whole-project map in parallel (the
         // map is cached after the first turn), then stream the spoken reply token
         // by token. The visual panel is produced separately and out of band.
