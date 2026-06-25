@@ -1,8 +1,12 @@
 import { useBuildStore } from '../../store/buildStore';
 import { useConversationStore } from '../../store/conversationStore';
 
-/** Slim always-visible bar at the bottom of the Build panel with the last
- *  operation summary and a single Undo button. */
+/**
+ * Always-visible safety net at the bottom of the Build panel. Since Ana applies
+ * changes to disk as she makes them, this is how the user reverses the last
+ * operation. It shows what the last change was and offers a single Undo; when
+ * there's nothing to undo it stays visible but quietly disabled.
+ */
 export function UndoBar(): JSX.Element {
   const canUndo = useBuildStore((s) => s.canUndo);
   const busy = useBuildStore((s) => s.busy);
@@ -19,17 +23,38 @@ export function UndoBar(): JSX.Element {
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-ana-border bg-ana-panel px-4 py-2">
-      <p aria-live="polite" className="truncate text-xs text-ana-text-muted">
-        {lastSummary ? `Last change: ${lastSummary}` : 'No changes to undo'}
-      </p>
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden="true"
+          className={`h-2 w-2 flex-shrink-0 rounded-full ${
+            canUndo ? 'bg-yellow-400' : 'bg-ana-border'
+          }`}
+        />
+        <p aria-live="polite" className="truncate text-xs text-ana-text-muted">
+          {canUndo && lastSummary ? (
+            <>
+              Last change: <span className="text-ana-text">{lastSummary}</span>
+            </>
+          ) : (
+            'No changes to undo'
+          )}
+        </p>
+      </div>
       <button
         type="button"
         onClick={() => void handleUndo()}
         disabled={disabled}
         aria-disabled={disabled}
         aria-label="Undo last change"
-        className="rounded border border-ana-border px-3 py-1 text-xs font-medium text-ana-text transition-colors hover:bg-ana-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className={`flex flex-shrink-0 items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors ${
+          disabled
+            ? 'cursor-not-allowed border border-ana-border text-ana-text-muted opacity-50'
+            : 'border border-ana-accent text-ana-accent hover:bg-ana-accent hover:text-ana-bg'
+        }`}
       >
+        <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v1M3 10l4-4M3 10l4 4" />
+        </svg>
         Undo
       </button>
     </div>
