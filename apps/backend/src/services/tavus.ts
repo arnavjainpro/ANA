@@ -14,6 +14,18 @@ const NO_REPO_GREETING =
 const REPO_GREETING =
   "Hi, I'm Ana. I can see your project now — ask me how something works, or tell me what you'd like to build, and we'll figure it out together.";
 
+// Default replica (the photorealistic face) when TAVUS_REPLICA_ID is not set.
+// "Gloria - Warm" — a stock replica tuned for a warm, smiling demeanour, so Ana
+// reads as friendly rather than flat. Her native voice comes with the replica
+// (the persona leaves external_voice_id empty), so this also warms up the voice.
+// Codified here so the choice lives in source control, not just the .env / dashboard.
+const DEFAULT_REPLICA_ID = 'r3f427f43c9d';
+
+/** The replica Ana should use: an explicit env override, else the warm default. */
+function replicaId(): string {
+  return env.tavus.replicaId || DEFAULT_REPLICA_ID;
+}
+
 export interface TavusConversation {
   conversationId: string;
   conversationUrl: string;
@@ -64,11 +76,11 @@ function repoContext(): string | undefined {
  * awareness. Any leaked prior sessions are reclaimed first.
  */
 export async function createConversation(): Promise<TavusConversation> {
-  if (!env.tavus.apiKey || !env.tavus.replicaId || !env.tavus.personaId) {
+  if (!env.tavus.apiKey || !env.tavus.personaId) {
     throw new AppError(
       500,
       'TAVUS_NOT_CONFIGURED',
-      'Tavus is not configured. Set TAVUS_API_KEY, TAVUS_REPLICA_ID, TAVUS_PERSONA_ID.',
+      'Tavus is not configured. Set TAVUS_API_KEY and TAVUS_PERSONA_ID.',
     );
   }
 
@@ -84,7 +96,7 @@ export async function createConversation(): Promise<TavusConversation> {
       'x-api-key': env.tavus.apiKey,
     },
     body: JSON.stringify({
-      replica_id: env.tavus.replicaId,
+      replica_id: replicaId(),
       persona_id: env.tavus.personaId,
       conversation_name: 'Ana session',
       custom_greeting: active?.repoId ? REPO_GREETING : NO_REPO_GREETING,
@@ -173,6 +185,9 @@ export async function ensurePersona(): Promise<void> {
     { op: 'replace', path: '/system_prompt', value: SPEECH_SYSTEM_PROMPT },
     { op: 'replace', path: '/layers/llm', value: layer },
     { op: 'replace', path: '/layers/conversational_flow', value: CONVERSATIONAL_FLOW },
+    // Keep the persona's default face in sync with the replica conversations use,
+    // so the Tavus-native fallback path renders the same warm replica too.
+    { op: 'replace', path: '/default_replica_id', value: replicaId() },
   ];
 
   try {
