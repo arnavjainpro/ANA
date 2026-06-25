@@ -2,14 +2,6 @@ import { create } from 'zustand';
 import type { ConversationTurn, FilePatch, GitStatus, RepoTreeNode } from '../../types';
 import { isIpcError } from '../lib/ipc';
 
-/** A change to the currently-open file, used to drive Monaco diff decorations. */
-interface OpenFileDecoration {
-  original: string;
-  updated: string;
-  /** Increments each time a patch updates the open file so the editor re-decorates. */
-  nonce: number;
-}
-
 interface BuildState {
   /** Stable id for this Build session's undo history. */
   sessionId: string;
@@ -24,7 +16,8 @@ interface BuildState {
   openPath: string | null;
   openContents: string;
   loadingFile: boolean;
-  decoration: OpenFileDecoration | null;
+  /** Files changed by Ana's last turn (drives the diff view + changed-files list). */
+  lastPatches: FilePatch[];
 
   busy: boolean;
   lastSummary: string | null;
@@ -54,21 +47,14 @@ interface BuildState {
   endSession: () => void;
 }
 
+/** If the currently-open file is among the patches, sync its editor contents. */
 function applyPatchToOpenFile(
   state: BuildState,
   patches: FilePatch[],
 ): Partial<BuildState> {
   if (!state.openPath) return {};
   const match = patches.find((p) => p.path === state.openPath);
-  if (!match) return {};
-  return {
-    openContents: match.updated,
-    decoration: {
-      original: match.original,
-      updated: match.updated,
-      nonce: (state.decoration?.nonce ?? 0) + 1,
-    },
-  };
+  return match ? { openContents: match.updated } : {};
 }
 
 export const useBuildStore = create<BuildState>((set, get) => ({
@@ -81,7 +67,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   openPath: null,
   openContents: '',
   loadingFile: false,
-  decoration: null,
+  lastPatches: [],
 
   busy: false,
   lastSummary: null,
@@ -129,7 +115,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       set({ error: result.error });
       return;
     }
-    set({ openPath: relPath, openContents: result.contents, decoration: null });
+    set({ openPath: relPath, openContents: result.contents });
   },
 
   runTurn: async ({ transcript, history, repoId, repoFullName }) => {
@@ -155,6 +141,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     if (result.patches.length > 0) {
       set((state) => ({
         ...applyPatchToOpenFile(state, result.patches),
+        lastPatches: result.patches,
         lastSummary: summaryFor(result.patches),
         canUndo: true,
       }));
@@ -183,6 +170,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     if (result.patches.length > 0) {
       set((state) => ({
         ...applyPatchToOpenFile(state, result.patches),
+        lastPatches: [],
         canUndo: false,
         lastSummary: null,
       }));
