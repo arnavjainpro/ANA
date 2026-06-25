@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar';
 import { ConnectPanel } from './components/ConnectPanel';
-import { FileTree } from './components/FileTree';
+import { FileTreeSection } from './components/FileTreeSection';
 import { AnaConversation } from './components/AnaConversation';
 import { Composer } from './components/Composer';
-import { FileViewer } from './components/FileViewer';
 import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
@@ -25,7 +24,6 @@ export default function App(): JSX.Element {
   const error = useConversationStore((s) => s.error);
   const sessionStarting = useConversationStore((s) => s.sessionStarting);
   const repoError = useRepoStore((s) => s.error);
-  const { openFiles } = useUiStore();
 
   const [centerWidth, setCenterWidth] = useState(40);
   const [dragging, setDragging] = useState(false);
@@ -121,9 +119,7 @@ export default function App(): JSX.Element {
             className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0"
           >
             <ConnectPanel />
-            <div className="flex-1 overflow-auto">
-              <FileTree />
-            </div>
+            <FileTreeSection />
           </aside>
         )}
 
@@ -158,18 +154,6 @@ export default function App(): JSX.Element {
           <IndexingProgress />
           <WorkspaceContent />
         </main>
-
-        {openFiles.length > 0 && (
-          <>
-            <div aria-hidden="true" className="w-1 bg-ana-border" />
-            <aside
-              aria-label="Open files"
-              className="w-80 flex-shrink-0 border-l border-ana-border bg-ana-panel overflow-hidden"
-            >
-              <FileViewer />
-            </aside>
-          </>
-        )}
       </div>
 
       {activeError && (
