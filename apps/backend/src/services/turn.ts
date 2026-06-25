@@ -10,6 +10,7 @@ import { validatePatches, generateOperationId } from './builder.js';
 import * as history from './history.js';
 import type {
   AnaResponse,
+  BuildPlan,
   BuildResult,
   BuildTurnRequest,
   Mode,
@@ -102,6 +103,22 @@ function candidateTargets(intentTarget: string | null, chunks: RetrievedChunk[])
 }
 
 /**
+ * Phase 1 of a Build turn: classify intent + RAG to pick the most likely target
+ * file paths, which the client then reads from its local working copy before the
+ * reasoning call (phase 2). Never throws — returns no paths on failure.
+ */
+export async function planBuildTurn(req: BuildTurnRequest): Promise<BuildPlan> {
+  try {
+    const intent = await classifyIntent(req.transcript, req.history ?? []);
+    const chunks = req.repoId ? await retrieveChunks(req.repoId, req.transcript) : [];
+    return { paths: candidateTargets(intent.target, chunks) };
+  } catch (err) {
+    console.error('[build] planning failed:', err instanceof Error ? err.message : err);
+    return { paths: [] };
+  }
+}
+
+/**
  * Process a Build-mode turn: classify → assemble context (RAG + full target
  * file contents) → reasoning → validate → record on the undo stack. Returns the
  * patches for the client to apply atomically to disk. Never throws — on any
@@ -117,16 +134,23 @@ export async function processBuildTurn(
     const intent = await classifyIntent(req.transcript, historyTurns);
     const chunks = req.repoId ? await retrieveChunks(req.repoId, req.transcript) : [];
 
-    // Full contents of the most likely target files (ground truth Ana edits).
-    const targets = candidateTargets(intent.target, chunks);
-    const files: { path: string; contents: string }[] = [];
-    if (options.githubToken && req.repoFullName) {
-      for (const path of targets) {
-        try {
-          const contents = await getFileContents(options.githubToken, req.repoFullName, path);
-          files.push({ path, contents });
-        } catch {
-          // Non-fatal: skip a target we can't read.
+    // Ground truth Ana edits. Prefer the local working-copy contents the client
+    // read from disk (so each patch's `original` matches disk exactly); only
+    // legacy callers that didn't supply files fall back to fetching from GitHub.
+    let files: { path: string; contents: string }[];
+    if (req.files) {
+      files = req.files;
+    } else {
+      files = [];
+      const targets = candidateTargets(intent.target, chunks);
+      if (options.githubToken && req.repoFullName) {
+        for (const path of targets) {
+          try {
+            const contents = await getFileContents(options.githubToken, req.repoFullName, path);
+            files.push({ path, contents });
+          } catch {
+            // Non-fatal: skip a target we can't read.
+          }
         }
       }
     }
