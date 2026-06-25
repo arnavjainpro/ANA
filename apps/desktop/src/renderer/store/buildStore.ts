@@ -33,13 +33,17 @@ interface BuildState {
   loadLocalTree: () => Promise<void>;
   /** Open a file in the editor (reads from disk via IPC). */
   openFile: (relPath: string) => Promise<void>;
-  /** Run a Build turn; returns Ana's spoken reply (or null on hard error). */
+  /**
+   * Run a Build turn. Returns Ana's spoken reply plus the applied patches (so
+   * the caller can narrate one line per file), or null when there is no repo
+   * path yet.
+   */
   runTurn: (input: {
     transcript: string;
     history: ConversationTurn[];
     repoId?: string;
     repoFullName?: string;
-  }) => Promise<string | null>;
+  }) => Promise<{ spoken: string; patches: FilePatch[] } | null>;
   /** Undo the last operation; returns Ana's spoken reply. */
   undo: () => Promise<string | null>;
   refreshGitStatus: () => Promise<void>;
@@ -136,7 +140,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     set({ busy: false });
     if (isIpcError(result)) {
       set({ error: result.error });
-      return result.error;
+      return { spoken: result.error, patches: [] };
     }
     if (result.patches.length > 0) {
       set((state) => ({
@@ -148,13 +152,18 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       void get().refreshGitStatus();
       void get().loadLocalTree();
       // If the change touched a file that isn't open, open the first patched one.
+      // Open the first changed file so its diff shows immediately; the Composer
+      // then narrates each file in turn, advancing the view.
       const { openPath } = get();
       const firstPatched = result.patches[0];
       if (firstPatched && (!openPath || !result.patches.some((p) => p.path === openPath))) {
         await get().openFile(firstPatched.path);
       }
+    } else {
+      // No changes this turn — clear any lingering diff from a previous turn.
+      set({ lastPatches: [] });
     }
-    return result.spoken;
+    return { spoken: result.spoken, patches: result.patches };
   },
 
   undo: async () => {
