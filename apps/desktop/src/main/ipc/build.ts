@@ -6,7 +6,7 @@ import {
   setStoredRepoPath,
   validateRepoFolder,
 } from '../lib/repoPaths.js';
-import { applyPatchesToDisk } from './filesystem.js';
+import { applyPatchesToDisk, readLocalFiles } from './filesystem.js';
 import { stagePaths } from './git.js';
 import type { BuildResult, BuildTurnRequest, IpcResult, UndoResult } from '../../types.js';
 
@@ -57,9 +57,23 @@ export function registerBuildIpc(): void {
     async (_e, req: BuildTurnRequest): Promise<IpcResult<BuildResult>> => {
       try {
         const token = await loadGitHubToken();
+        // Phase 1: backend picks candidate target paths (classify + RAG).
+        const plan = await backendJson<{ paths: string[] }>('/conversation/build/plan', {
+          method: 'POST',
+          body: JSON.stringify({
+            transcript: req.transcript,
+            history: req.history,
+            repoId: req.repoId,
+            repoFullName: req.repoFullName,
+          }),
+        });
+        // Read those files from the LOCAL working copy so Ana's `original`
+        // matches disk exactly (regardless of branch / EOL / uncommitted edits).
+        const files = await readLocalFiles(req.repoPath, plan.paths);
+        // Phase 2: reason over the local contents and return patches.
         const result = await backendJson<BuildResult>('/conversation/build', {
           method: 'POST',
-          body: JSON.stringify(req),
+          body: JSON.stringify({ ...req, files }),
           githubToken: token ?? undefined,
         });
 

@@ -107,6 +107,28 @@ export async function applyPatchesToDisk(repoPath: string, patches: FilePatch[])
   }
 }
 
+/**
+ * Read the given repo-relative paths from the local working copy, skipping any
+ * that are forbidden or don't exist on disk. Feeds Ana the exact on-disk
+ * "before" contents for a Build turn so each patch's `original` matches disk.
+ */
+export async function readLocalFiles(
+  repoPath: string,
+  paths: string[],
+): Promise<{ path: string; contents: string }[]> {
+  const out: { path: string; contents: string }[] = [];
+  for (const path of paths) {
+    if (isForbidden(path)) continue;
+    try {
+      const abs = resolveWithinRoot(repoPath, path);
+      out.push({ path, contents: await fs.readFile(abs, 'utf-8') });
+    } catch {
+      // Missing locally (e.g. not pulled yet) — skip; Ana edits what's on disk.
+    }
+  }
+  return out;
+}
+
 export function registerFilesystemIpc(): void {
   ipcMain.handle(
     'fs:readFile',
