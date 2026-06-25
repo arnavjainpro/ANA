@@ -51,6 +51,22 @@ async function atomicWrite(absPath: string, contents: string): Promise<void> {
   }
 }
 
+/** Strip CR so EOL differences (CRLF vs LF) don't cause false mismatches. */
+function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, '\n');
+}
+
+/** The EOL style a file already uses on disk (CRLF if any present, else LF). */
+function detectEol(text: string): '\r\n' | '\n' {
+  return text.includes('\r\n') ? '\r\n' : '\n';
+}
+
+/** Re-apply a target EOL style to text (which may currently use either). */
+function applyEol(text: string, eol: '\r\n' | '\n'): string {
+  const lf = text.replace(/\r\n/g, '\n');
+  return eol === '\r\n' ? lf.replace(/\n/g, '\r\n') : lf;
+}
+
 /**
  * Apply a batch of patches atomically. ALL patches are validated first — path
  * safety, protected-file check, and `original` matching current on-disk
@@ -58,7 +74,11 @@ async function atomicWrite(absPath: string, contents: string): Promise<void> {
  * written (never partial batches). Used by the Build turn and undo flows.
  */
 export async function applyPatchesToDisk(repoPath: string, patches: FilePatch[]): Promise<void> {
-  // Phase 1 — validate every patch.
+  // Phase 1 — validate every patch, capturing each file's on-disk EOL style.
+  // The match is EOL-insensitive: Ana's `original` comes from GitHub (LF) while
+  // the local checkout may be CRLF (Windows), and that difference must not read
+  // as "the file changed".
+  const eolByPath = new Map<string, '\r\n' | '\n'>();
   for (const patch of patches) {
     if (isForbidden(patch.path)) {
       throw new Error(`"${patch.path}" is a protected file and can't be changed.`);
@@ -70,18 +90,20 @@ export async function applyPatchesToDisk(repoPath: string, patches: FilePatch[])
     } catch {
       current = ''; // new file
     }
-    if (current !== patch.original) {
+    if (normalizeEol(current) !== normalizeEol(patch.original)) {
       throw new Error(
         `"${patch.path}" changed on disk since Ana read it — skipping to avoid overwriting your edits.`,
       );
     }
+    eolByPath.set(patch.path, detectEol(current));
   }
 
-  // Phase 2 — write everything (all inputs already validated).
+  // Phase 2 — write everything, preserving each file's existing EOL style so a
+  // CRLF file stays CRLF (no whole-file line-ending diff). New files default to LF.
   for (const patch of patches) {
     const abs = resolveWithinRoot(repoPath, patch.path);
     await fs.mkdir(dirname(abs), { recursive: true });
-    await atomicWrite(abs, patch.updated);
+    await atomicWrite(abs, applyEol(patch.updated, eolByPath.get(patch.path) ?? '\n'));
   }
 }
 
