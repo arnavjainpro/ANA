@@ -1,11 +1,37 @@
 import { ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { isForbidden, resolveWithinRoot } from '../lib/fsSafe.js';
 import { getCurrentRepoRoot } from '../lib/repoPaths.js';
-import type { FilePatch, IpcResult } from '../../types.js';
+import type { FilePatch, IpcResult, RepoTreeNode } from '../../types.js';
 
 const TMP_SUFFIX = '.ana-tmp';
+
+/**
+ * Recursively walk the working copy into a flat `RepoTreeNode[]` (same shape as
+ * the GitHub tree, so the renderer's FileTree renders it unchanged). Forbidden
+ * trees (`.git`, `node_modules`, secrets) are skipped before recursing, and
+ * symlinked directories are ignored (Dirent.isDirectory() is false for them),
+ * so the walk can't follow links out of the repo or loop. Paths are relative
+ * and forward-slashed for cross-platform consistency.
+ */
+async function walkDir(root: string, rel: string): Promise<RepoTreeNode[]> {
+  const absDir = rel ? join(root, rel) : root;
+  const entries = await fs.readdir(absDir, { withFileTypes: true });
+  const nodes: RepoTreeNode[] = [];
+  for (const entry of entries) {
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+    if (isForbidden(childRel)) continue;
+    if (entry.isDirectory()) {
+      nodes.push({ path: childRel, name: entry.name, type: 'dir', size: 0 });
+      nodes.push(...(await walkDir(root, childRel)));
+    } else if (entry.isFile()) {
+      // size is unused by the tree UI; left 0 to avoid a stat() per file.
+      nodes.push({ path: childRel, name: entry.name, type: 'file', size: 0 });
+    }
+  }
+  return nodes;
+}
 
 /**
  * Atomic write: write to a sibling temp file, then rename over the target.
@@ -89,6 +115,19 @@ export function registerFilesystemIpc(): void {
         return { success: true };
       } catch (err) {
         return { error: err instanceof Error ? err.message : 'Could not write file.' };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'fs:listDir',
+    async (_e, repoPath: string): Promise<IpcResult<{ tree: RepoTreeNode[] }>> => {
+      try {
+        const tree = await walkDir(repoPath, '');
+        tree.sort((a, b) => a.path.localeCompare(b.path));
+        return { tree };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Could not list the project folder.' };
       }
     },
   );

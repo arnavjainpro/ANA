@@ -6,19 +6,36 @@ import type { RepoTreeNode } from '../../types';
 
 /**
  * The single repository file tree, shown in the left sidebar across all modes.
- * In Build mode a click opens the file in the workspace editor (read from the
- * local working copy via `buildStore.openFile`). In other modes there is no
- * file viewer, so clicks are inert.
+ *
+ * In Build mode the list comes from the local working copy (`buildStore.localTree`)
+ * so it matches what Ana actually edits — including untracked files — and a click
+ * opens the file in the workspace editor. Git-modified files get a dot. In other
+ * modes it shows the GitHub tree (`repoStore.tree`) and is browse-only, since
+ * there is no editor to open into.
  */
 export function FileTree(): JSX.Element {
-  const tree = useRepoStore((s) => s.tree);
+  const githubTree = useRepoStore((s) => s.tree);
   const buildMode = useUiStore((s) => s.activeMode === 'Build');
+  const localTree = useBuildStore((s) => s.localTree);
+  const gitStatus = useBuildStore((s) => s.gitStatus);
   const openBuildFile = useBuildStore((s) => s.openFile);
   const openPath = useBuildStore((s) => s.openPath);
 
+  const source = buildMode ? localTree : githubTree;
+
   const files = useMemo(
-    () => tree.filter((n) => n.type === 'file').sort((a, b) => a.path.localeCompare(b.path)),
-    [tree],
+    () => source.filter((n) => n.type === 'file').sort((a, b) => a.path.localeCompare(b.path)),
+    [source],
+  );
+
+  const modified = useMemo(
+    () =>
+      new Set<string>([
+        ...(gitStatus?.staged ?? []),
+        ...(gitStatus?.unstaged ?? []),
+        ...(gitStatus?.untracked ?? []),
+      ]),
+    [gitStatus],
   );
 
   if (files.length === 0) {
@@ -29,6 +46,7 @@ export function FileTree(): JSX.Element {
     <ul className="overflow-auto text-sm divide-y divide-ana-border">
       {files.map((node: RepoTreeNode) => {
         const isOpen = buildMode && openPath === node.path;
+        const isModified = buildMode && modified.has(node.path);
         return (
           <li
             key={node.path}
@@ -50,6 +68,12 @@ export function FileTree(): JSX.Element {
                 <p className="font-medium text-sm truncate">{node.name}</p>
                 <p className="truncate text-xs text-ana-text-muted mt-0.5">{node.path}</p>
               </div>
+              {isModified && (
+                <span
+                  aria-label="Modified"
+                  className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-yellow-400"
+                />
+              )}
             </div>
           </li>
         );
