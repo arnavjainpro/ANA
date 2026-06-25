@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ConversationTurn, FilePatch, GitStatus } from '../../types';
+import type { ConversationTurn, FilePatch, GitStatus, RepoTreeNode } from '../../types';
 import { isIpcError } from '../lib/ipc';
 
 /** A change to the currently-open file, used to drive Monaco diff decorations. */
@@ -19,6 +19,8 @@ interface BuildState {
   pathChecked: boolean;
   selectingPath: boolean;
 
+  /** The local working copy as a flat tree (mirrors what's actually on disk). */
+  localTree: RepoTreeNode[];
   openPath: string | null;
   openContents: string;
   loadingFile: boolean;
@@ -34,6 +36,8 @@ interface BuildState {
   ensureRepoPath: (repoFullName: string) => Promise<void>;
   /** Prompt for a folder and persist it. */
   selectRepoPath: (repoFullName: string) => Promise<void>;
+  /** Reload the local working-copy file tree from disk. */
+  loadLocalTree: () => Promise<void>;
   /** Open a file in the editor (reads from disk via IPC). */
   openFile: (relPath: string) => Promise<void>;
   /** Run a Build turn; returns Ana's spoken reply (or null on hard error). */
@@ -73,6 +77,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   pathChecked: false,
   selectingPath: false,
 
+  localTree: [],
   openPath: null,
   openContents: '',
   loadingFile: false,
@@ -87,7 +92,10 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   ensureRepoPath: async (repoFullName) => {
     const { repoPath } = await window.ana.build.getRepoPath(repoFullName);
     set({ repoPath, pathChecked: true });
-    if (repoPath) void get().refreshGitStatus();
+    if (repoPath) {
+      void get().refreshGitStatus();
+      void get().loadLocalTree();
+    }
   },
 
   selectRepoPath: async (repoFullName) => {
@@ -101,6 +109,14 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     }
     set({ repoPath: result.repoPath, pathChecked: true });
     void get().refreshGitStatus();
+    void get().loadLocalTree();
+  },
+
+  loadLocalTree: async () => {
+    const { repoPath } = get();
+    if (!repoPath) return;
+    const result = await window.ana.fs.listDir(repoPath);
+    if (!isIpcError(result)) set({ localTree: result.tree });
   },
 
   openFile: async (relPath) => {
@@ -143,6 +159,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
         canUndo: true,
       }));
       void get().refreshGitStatus();
+      void get().loadLocalTree();
       // If the change touched a file that isn't open, open the first patched one.
       const { openPath } = get();
       const firstPatched = result.patches[0];
@@ -170,6 +187,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
         lastSummary: null,
       }));
       void get().refreshGitStatus();
+      void get().loadLocalTree();
     }
     return result.spoken;
   },
