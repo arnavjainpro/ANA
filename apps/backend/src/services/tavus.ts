@@ -120,6 +120,20 @@ const TAVUS_LLM_MODEL = 'tavus-claude-haiku-4.5';
 // field — keep it descriptive.
 const CUSTOM_LLM_MODEL = 'ana-voice';
 
+// Turn-taking / barge-in config for the persona's conversational_flow layer.
+// `replica_interruptibility: 'high'` lets the user interrupt Ana even at the very
+// start of speech (e.g. the no-repo intro greeting), where Tavus is otherwise
+// least willing to yield the floor. The remaining fields pin the current
+// known-good values so the whole layer is reproducible on every startup rather
+// than relying on dashboard state that can drift or reset.
+const CONVERSATIONAL_FLOW = {
+  turn_detection_model: 'sparrow-1',
+  turn_taking_patience: 'medium',
+  replica_interruptibility: 'high',
+  voice_isolation: 'near',
+  idle_engagement: 'off',
+} as const;
+
 /**
  * Build the persona's LLM layer. When ANA_PUBLIC_URL is set, point Tavus at our
  * own streaming, RAG-grounded `/v1/chat/completions` so Ana can actually talk
@@ -158,6 +172,7 @@ export async function ensurePersona(): Promise<void> {
   const patch = [
     { op: 'replace', path: '/system_prompt', value: SPEECH_SYSTEM_PROMPT },
     { op: 'replace', path: '/layers/llm', value: layer },
+    { op: 'replace', path: '/layers/conversational_flow', value: CONVERSATIONAL_FLOW },
   ];
 
   try {
