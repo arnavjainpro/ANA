@@ -49,6 +49,7 @@ const api: AnaApi = {
   fs: {
     readFile: (repoPath: string, relPath: string) =>
       ipcRenderer.invoke('fs:readFile', repoPath, relPath),
+    listDir: (repoPath: string) => ipcRenderer.invoke('fs:listDir', repoPath),
     getRepoRoot: () => ipcRenderer.invoke('fs:getRepoRoot'),
   },
   git: {

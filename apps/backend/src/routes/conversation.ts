@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { createConversation, endConversation } from '../services/tavus.js';
-import { processTurn, processBuildTurn, undoBuild, endBuildSession } from '../services/turn.js';
+import {
+  processTurn,
+  planBuildTurn,
+  processBuildTurn,
+  undoBuild,
+  endBuildSession,
+} from '../services/turn.js';
 import { setActiveRepo, clearActiveRepo } from '../services/activeRepo.js';
 import { subscribePanel } from '../services/panelBus.js';
 import { githubTokenFrom } from '../lib/auth.js';
@@ -59,6 +65,20 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // Build phase 1: classify + RAG to pick the target file paths the client
+  // should read from its local working copy before the reasoning call.
+  app.post<{ Body: BuildTurnRequest }>('/conversation/build/plan', async (req, reply) => {
+    try {
+      const body = req.body;
+      if (!body?.transcript) {
+        return reply.status(400).send({ error: 'Missing transcript', code: 'MISSING_FIELDS' });
+      }
+      return reply.send(await planBuildTurn(body));
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
 
   // Build mode: classify → reason → validate → return patches for the client to
   // apply atomically to disk. Pushes the operation onto the per-session undo stack.

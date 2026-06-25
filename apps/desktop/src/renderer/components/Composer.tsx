@@ -4,6 +4,20 @@ import { useRepoStore } from '../store/repoStore';
 import { useUiStore } from '../store/uiStore';
 import { useBuildStore } from '../store/buildStore';
 import { isIpcError } from '../lib/ipc';
+import type { FilePatch } from '../../types';
+
+/** Stagger between per-file narration lines, so changes stream in like live work. */
+const NARRATION_STAGGER_MS = 700;
+
+/** Present-tense one-liner describing a single applied patch ("just did this…"). */
+function narrationLine(patch: FilePatch): string {
+  const name = patch.path.split('/').pop() ?? patch.path;
+  return `Updated ${name} — ${patch.summary}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Typed utterance input. Voice input is handled by Tavus, but a text composer
@@ -18,6 +32,7 @@ export function Composer(): JSX.Element {
   const buildRepoPath = useBuildStore((s) => s.repoPath);
   const buildBusy = useBuildStore((s) => s.busy);
   const runBuildTurn = useBuildStore((s) => s.runTurn);
+  const openBuildFile = useBuildStore((s) => s.openFile);
 
   const buildMode = activeMode === 'Build';
   const ready = buildMode ? buildRepoPath !== null : repoId !== null && indexStatus === 'ready';
@@ -31,13 +46,23 @@ export function Composer(): JSX.Element {
       setText('');
       setError(null);
       appendUserTurn(utterance);
-      const spoken = await runBuildTurn({
+      const res = await runBuildTurn({
         transcript: utterance,
         history: recentHistory(history),
         repoId: repoId ?? undefined,
         repoFullName: selectedRepo?.full_name,
       });
-      if (spoken) pushAssistant(spoken);
+      if (!res) return;
+      if (res.patches.length > 0) {
+        // Narrate one line per file as its diff comes into view ("just did this…").
+        for (const [i, patch] of res.patches.entries()) {
+          void openBuildFile(patch.path);
+          pushAssistant(narrationLine(patch));
+          if (i < res.patches.length - 1) await delay(NARRATION_STAGGER_MS);
+        }
+      } else if (res.spoken) {
+        pushAssistant(res.spoken);
+      }
       return;
     }
 

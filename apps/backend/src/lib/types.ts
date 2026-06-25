@@ -101,6 +101,18 @@ export interface BuildTurnRequest {
   repoId?: string;
   /** Owner/name of the connected repo, used to fetch target file contents. */
   repoFullName?: string;
+  /**
+   * Full contents of the target files, read from the user's local working copy
+   * by the client (phase 2). When present these are the ground truth Ana edits,
+   * so each patch's `original` matches disk exactly. Absent for legacy callers,
+   * which fall back to fetching contents from GitHub.
+   */
+  files?: { path: string; contents: string }[];
+}
+
+/** Phase-1 Build result: the target paths the client should read from disk. */
+export interface BuildPlan {
+  paths: string[];
 }
 
 /** A single recorded Build operation on the per-session undo stack. */

@@ -1,14 +1,6 @@
 import { create } from 'zustand';
-import type { ConversationTurn, FilePatch, GitStatus } from '../../types';
+import type { ConversationTurn, FilePatch, GitStatus, RepoTreeNode } from '../../types';
 import { isIpcError } from '../lib/ipc';
-
-/** A change to the currently-open file, used to drive Monaco diff decorations. */
-interface OpenFileDecoration {
-  original: string;
-  updated: string;
-  /** Increments each time a patch updates the open file so the editor re-decorates. */
-  nonce: number;
-}
 
 interface BuildState {
   /** Stable id for this Build session's undo history. */
@@ -19,10 +11,13 @@ interface BuildState {
   pathChecked: boolean;
   selectingPath: boolean;
 
+  /** The local working copy as a flat tree (mirrors what's actually on disk). */
+  localTree: RepoTreeNode[];
   openPath: string | null;
   openContents: string;
   loadingFile: boolean;
-  decoration: OpenFileDecoration | null;
+  /** Files changed by Ana's last turn (drives the diff view + changed-files list). */
+  lastPatches: FilePatch[];
 
   busy: boolean;
   lastSummary: string | null;
@@ -34,15 +29,21 @@ interface BuildState {
   ensureRepoPath: (repoFullName: string) => Promise<void>;
   /** Prompt for a folder and persist it. */
   selectRepoPath: (repoFullName: string) => Promise<void>;
+  /** Reload the local working-copy file tree from disk. */
+  loadLocalTree: () => Promise<void>;
   /** Open a file in the editor (reads from disk via IPC). */
   openFile: (relPath: string) => Promise<void>;
-  /** Run a Build turn; returns Ana's spoken reply (or null on hard error). */
+  /**
+   * Run a Build turn. Returns Ana's spoken reply plus the applied patches (so
+   * the caller can narrate one line per file), or null when there is no repo
+   * path yet.
+   */
   runTurn: (input: {
     transcript: string;
     history: ConversationTurn[];
     repoId?: string;
     repoFullName?: string;
-  }) => Promise<string | null>;
+  }) => Promise<{ spoken: string; patches: FilePatch[] } | null>;
   /** Undo the last operation; returns Ana's spoken reply. */
   undo: () => Promise<string | null>;
   refreshGitStatus: () => Promise<void>;
@@ -50,21 +51,14 @@ interface BuildState {
   endSession: () => void;
 }
 
+/** If the currently-open file is among the patches, sync its editor contents. */
 function applyPatchToOpenFile(
   state: BuildState,
   patches: FilePatch[],
 ): Partial<BuildState> {
   if (!state.openPath) return {};
   const match = patches.find((p) => p.path === state.openPath);
-  if (!match) return {};
-  return {
-    openContents: match.updated,
-    decoration: {
-      original: match.original,
-      updated: match.updated,
-      nonce: (state.decoration?.nonce ?? 0) + 1,
-    },
-  };
+  return match ? { openContents: match.updated } : {};
 }
 
 export const useBuildStore = create<BuildState>((set, get) => ({
@@ -73,10 +67,11 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   pathChecked: false,
   selectingPath: false,
 
+  localTree: [],
   openPath: null,
   openContents: '',
   loadingFile: false,
-  decoration: null,
+  lastPatches: [],
 
   busy: false,
   lastSummary: null,
@@ -87,7 +82,10 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   ensureRepoPath: async (repoFullName) => {
     const { repoPath } = await window.ana.build.getRepoPath(repoFullName);
     set({ repoPath, pathChecked: true });
-    if (repoPath) void get().refreshGitStatus();
+    if (repoPath) {
+      void get().refreshGitStatus();
+      void get().loadLocalTree();
+    }
   },
 
   selectRepoPath: async (repoFullName) => {
@@ -101,6 +99,14 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     }
     set({ repoPath: result.repoPath, pathChecked: true });
     void get().refreshGitStatus();
+    void get().loadLocalTree();
+  },
+
+  loadLocalTree: async () => {
+    const { repoPath } = get();
+    if (!repoPath) return;
+    const result = await window.ana.fs.listDir(repoPath);
+    if (!isIpcError(result)) set({ localTree: result.tree });
   },
 
   openFile: async (relPath) => {
@@ -113,7 +119,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       set({ error: result.error });
       return;
     }
-    set({ openPath: relPath, openContents: result.contents, decoration: null });
+    set({ openPath: relPath, openContents: result.contents });
   },
 
   runTurn: async ({ transcript, history, repoId, repoFullName }) => {
@@ -134,23 +140,30 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     set({ busy: false });
     if (isIpcError(result)) {
       set({ error: result.error });
-      return result.error;
+      return { spoken: result.error, patches: [] };
     }
     if (result.patches.length > 0) {
       set((state) => ({
         ...applyPatchToOpenFile(state, result.patches),
+        lastPatches: result.patches,
         lastSummary: summaryFor(result.patches),
         canUndo: true,
       }));
       void get().refreshGitStatus();
+      void get().loadLocalTree();
       // If the change touched a file that isn't open, open the first patched one.
+      // Open the first changed file so its diff shows immediately; the Composer
+      // then narrates each file in turn, advancing the view.
       const { openPath } = get();
       const firstPatched = result.patches[0];
       if (firstPatched && (!openPath || !result.patches.some((p) => p.path === openPath))) {
         await get().openFile(firstPatched.path);
       }
+    } else {
+      // No changes this turn — clear any lingering diff from a previous turn.
+      set({ lastPatches: [] });
     }
-    return result.spoken;
+    return { spoken: result.spoken, patches: result.patches };
   },
 
   undo: async () => {
@@ -166,10 +179,12 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     if (result.patches.length > 0) {
       set((state) => ({
         ...applyPatchToOpenFile(state, result.patches),
+        lastPatches: [],
         canUndo: false,
         lastSummary: null,
       }));
       void get().refreshGitStatus();
+      void get().loadLocalTree();
     }
     return result.spoken;
   },
