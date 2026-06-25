@@ -4,6 +4,7 @@ import { WhiteboardPanel } from '../panels/plan/WhiteboardPanel';
 import { BuildPanel } from '../panels/build/BuildPanel';
 import { PanelSkeleton } from './PanelSkeleton';
 import { useUiStore } from '../store/uiStore';
+import { useConversationStore } from '../store/conversationStore';
 
 /** Whether the user has asked the OS to minimise non-essential motion. */
 function prefersReducedMotion(): boolean {
@@ -26,6 +27,7 @@ function prefersReducedMotion(): boolean {
 export function WorkspaceContent(): JSX.Element {
   const activeMode = useUiStore((s) => s.activeMode);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
+  const diagram = useConversationStore((s) => s.diagram);
 
   // The mode currently painted — lags `activeMode` until the fade-out finishes.
   const [displayMode, setDisplayMode] = useState(activeMode);
@@ -71,14 +73,15 @@ export function WorkspaceContent(): JSX.Element {
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     >
-      {isPanelLoading && displayMode !== 'Build' ? (
+      {isPanelLoading && displayMode !== 'Build' && displayMode !== 'Understand' ? (
         <PanelSkeleton />
       ) : displayMode === 'Build' ? (
         <BuildPanel />
       ) : displayMode === 'Plan' ? (
         <WhiteboardPanel />
       ) : (
-        <DiagramPanel />
+        // Understand: DiagramPanel renders its own loading skeleton.
+        <DiagramPanel mermaid={diagram?.mermaid ?? ''} isLoading={isPanelLoading} />
       )}
     </div>
   );
