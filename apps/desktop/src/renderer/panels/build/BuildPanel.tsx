@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { useRepoStore } from '../../store/repoStore';
 import { useBuildStore } from '../../store/buildStore';
-import { BuildFileTree } from './BuildFileTree';
 import { CodeEditor } from './CodeEditor';
 import { UndoBar } from './UndoBar';
 
 /**
- * Build mode right-panel: file tree + read-only Monaco editor + undo bar. On
- * entry it resolves the local working-copy path for the connected repo, prompting
- * for a folder the first time (validated against the repo name in the main process).
+ * Build mode right-panel: read-only Monaco editor + undo bar. The repository
+ * file tree lives in the shared left sidebar (`FileTree`) and drives which file
+ * opens here. On entry this resolves the local working-copy path for the
+ * connected repo, prompting for a folder the first time (validated against the
+ * repo name in the main process).
  */
 export function BuildPanel(): JSX.Element {
   const selectedRepo = useRepoStore((s) => s.selectedRepo);
@@ -73,13 +74,8 @@ export function BuildPanel(): JSX.Element {
           {repoPath}
         </p>
       </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-64 flex-shrink-0 overflow-auto border-r border-ana-border bg-ana-panel">
-          <BuildFileTree />
-        </aside>
-        <div className="min-h-0 flex-1">
-          <CodeEditor />
-        </div>
+      <div className="min-h-0 flex-1">
+        <CodeEditor />
       </div>
       <UndoBar />
     </div>
