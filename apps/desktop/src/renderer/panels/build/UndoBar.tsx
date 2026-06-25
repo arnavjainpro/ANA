@@ -46,10 +46,10 @@ export function UndoBar(): JSX.Element {
         disabled={disabled}
         aria-disabled={disabled}
         aria-label="Undo last change"
-        className={`flex flex-shrink-0 items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors ${
+        className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
           disabled
-            ? 'cursor-not-allowed border border-ana-border text-ana-text-muted opacity-50'
-            : 'border border-ana-accent text-ana-accent hover:bg-ana-accent hover:text-ana-bg'
+            ? 'cursor-not-allowed border-ana-border text-ana-text-muted opacity-50'
+            : 'border-ana-brand-border text-ana-brand hover:bg-ana-brand hover:text-white hover:shadow-glow'
         }`}
       >
         <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

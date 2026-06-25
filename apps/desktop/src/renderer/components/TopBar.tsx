@@ -4,6 +4,13 @@ import type { Mode } from '../../types';
 
 const MODES: Mode[] = ['Understand', 'Plan', 'Build'];
 
+/** Short helper copy under each mode, surfaced as a tooltip on the tab. */
+const MODE_HINT: Record<Mode, string> = {
+  Understand: 'Explore and explain the codebase',
+  Plan: 'Turn an idea into stories and tasks',
+  Build: 'Let Ana write changes to your local copy',
+};
+
 export function TopBar(): JSX.Element {
   const activeMode = useUiStore((s) => s.activeMode);
   const setMode = useUiStore((s) => s.setMode);
@@ -14,32 +21,61 @@ export function TopBar(): JSX.Element {
   const login = useRepoStore((s) => s.login);
   const selectedRepo = useRepoStore((s) => s.selectedRepo);
 
+  const activeIndex = Math.max(0, MODES.indexOf(activeMode));
+
   return (
     <header
       role="banner"
-      className="flex items-center justify-between border-b border-ana-border bg-ana-panel px-4 py-3 h-12"
+      className="relative flex h-14 items-center justify-between border-b border-ana-border bg-ana-panel px-4 shadow-elevate"
     >
-      {/* Left: Sidebar toggle + Ana logo + repo name */}
-      <div className="flex items-center gap-4">
+      {/* Left: Sidebar toggle + Ana brand mark + repo badge */}
+      <div className="flex flex-1 items-center gap-3">
         <button
           type="button"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-1 hover:bg-ana-hover rounded transition-colors text-ana-text-muted hover:text-ana-text"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ana-text-muted transition-colors duration-150 hover:bg-ana-hover hover:text-ana-text"
           aria-label="Toggle sidebar"
+          aria-pressed={sidebarOpen}
           title="Toggle sidebar"
         >
-          <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="text-lg font-semibold text-ana-text tracking-tight">Ana</span>
+
+        <div className="flex items-center gap-2.5">
+          {/* Brand mark: a simple solid blue dot. */}
+          <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-ana-brand" />
+          <span className="text-lg font-semibold tracking-tight text-ana-text">Ana</span>
+        </div>
+
         {selectedRepo && (
-          <span className="text-sm text-ana-text-muted">{selectedRepo.full_name}</span>
+          <div className="ml-1 flex min-w-0 items-center gap-1.5 rounded-md border border-ana-border bg-ana-bg/60 px-2 py-1">
+            <svg aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 text-ana-text-muted" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+            <span className="truncate text-xs font-medium text-ana-text">{selectedRepo.full_name}</span>
+          </div>
         )}
       </div>
 
-      {/* Center: Mode switcher (ARIA tabs controlling the workspace panel) */}
-      <div role="tablist" aria-label="Conversation mode" className="flex items-center gap-2">
+      {/* Center: segmented mode switcher with an animated sliding indicator.
+          A 3-column grid keeps every slot equal width, so the indicator (one
+          column wide, translated by the active index) lands exactly under its
+          label regardless of label length. */}
+      <div
+        role="tablist"
+        aria-label="Conversation mode"
+        className="relative grid grid-cols-3 rounded-xl border border-ana-border bg-ana-bg/70 p-1 backdrop-blur-sm"
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-1 left-1 rounded-lg bg-ana-brand transition-transform duration-300 ease-emphasized"
+          style={{
+            width: `calc((100% - 0.5rem) / ${MODES.length})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
         {MODES.map((mode) => {
           const selected = mode === activeMode;
           return (
@@ -51,10 +87,9 @@ export function TopBar(): JSX.Element {
               aria-selected={selected}
               aria-controls="ana-workspace"
               onClick={() => setMode(mode)}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors duration-100 ease-in-out ${
-                selected
-                  ? 'bg-ana-accent text-ana-bg'
-                  : 'text-ana-text-muted hover:text-ana-text hover:bg-ana-hover'
+              title={MODE_HINT[mode]}
+              className={`relative z-10 rounded-lg px-5 py-1.5 text-center text-sm font-medium transition-colors duration-200 ${
+                selected ? 'text-white' : 'text-ana-text-muted hover:text-ana-text'
               }`}
             >
               {mode}
@@ -63,22 +98,32 @@ export function TopBar(): JSX.Element {
         })}
       </div>
 
-      {/* Right: Command palette + Status */}
-      <div className="flex items-center gap-4">
+      {/* Right: Command palette + connection status */}
+      <div className="flex flex-1 items-center justify-end gap-3">
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="px-2 py-1 rounded text-xs text-ana-text-muted hover:text-ana-text hover:bg-ana-hover transition-colors flex items-center gap-1"
+          className="flex items-center gap-2 rounded-lg border border-ana-border bg-ana-bg/60 px-2.5 py-1.5 text-xs text-ana-text-muted transition-colors duration-150 hover:border-ana-brand-border hover:text-ana-text"
           aria-label="Open command palette"
           title="Open command palette (Cmd+K)"
         >
-          <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <span>Cmd+K</span>
+          <kbd className="font-sans text-[11px] font-medium tracking-wide text-ana-text-muted">⌘K</kbd>
         </button>
-        <div className="text-xs text-ana-text-muted">
-          {connected ? `@${login ?? 'connected'}` : 'Not connected'}
+
+        <div
+          className="flex items-center gap-1.5 text-xs text-ana-text-muted"
+          title={connected ? 'Connected to GitHub' : 'Not connected'}
+        >
+          <span
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 rounded-full ${
+              connected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-ana-text-muted/50'
+            }`}
+          />
+          <span className="font-medium">{connected ? `@${login ?? 'connected'}` : 'Not connected'}</span>
         </div>
       </div>
     </header>

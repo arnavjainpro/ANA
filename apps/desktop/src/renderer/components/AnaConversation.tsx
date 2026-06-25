@@ -3,6 +3,7 @@ import { useConversationStore } from '../store/conversationStore';
 import { useRepoStore } from '../store/repoStore';
 import { CviConversation } from './CviConversation';
 import { isIpcError } from '../lib/ipc';
+import anaAvatar from '../assets/ana-avatar.png';
 
 /**
  * When VITE_TAVUS_MANUAL_START is "false", Ana boots straight into the Tavus
@@ -71,20 +72,17 @@ export function AnaConversation(): JSX.Element {
     );
   }
 
-  // While a session initializes, show a subtle pulsing avatar placeholder.
+  // While a session initializes, show a branded, gently pulsing avatar orb.
   if (sessionStarting) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 bg-ana-panel">
+      <div className="flex h-full flex-col items-center justify-center gap-5 bg-ana-panel">
+        <div className="relative flex h-20 w-20 items-center justify-center">
+          {/* Expanding rings convey "connecting" without a spinner. */}
+          <span className="absolute inset-0 rounded-full bg-ana-brand/15 ana-pulse" />
+          <span className="absolute inset-2 rounded-full bg-ana-brand/25 ana-pulse" style={{ animationDelay: '300ms' }} />
+          <span className="relative h-12 w-12 rounded-full bg-ana-brand" />
+        </div>
         <div className="text-center">
-          <svg
-            aria-hidden="true"
-            className="w-12 h-12 mx-auto text-ana-text-muted mb-2 ana-pulse"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
           <p className="text-sm font-semibold text-ana-text">Connecting to Ana…</p>
           <p className="mt-1 text-xs text-ana-text-muted">Setting up your session</p>
         </div>
@@ -93,19 +91,26 @@ export function AnaConversation(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 bg-ana-panel">
+    <div className="flex h-full animate-fade-in-up flex-col items-center justify-center gap-5 bg-ana-panel px-6">
+      <img
+        src={anaAvatar}
+        alt=""
+        className="h-20 w-20 rounded-full object-cover ring-1 ring-ana-border"
+      />
       <div className="text-center">
-        <svg aria-hidden="true" className="w-12 h-12 mx-auto text-ana-text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p className="text-sm font-semibold text-ana-text">Start a conversation</p>
-        <p className="mt-1 text-xs text-ana-text-muted">Initialize Ana to begin discussing this repository</p>
+        <p className="text-base font-semibold text-ana-text">Start a conversation</p>
+        <p className="mt-1 max-w-xs text-xs leading-relaxed text-ana-text-muted">
+          Initialize Ana to begin talking through this repository.
+        </p>
       </div>
       <button
         type="button"
         onClick={handleStart}
-        className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-2 rounded-lg bg-ana-brand px-5 py-2.5 text-sm font-medium text-white shadow-glow transition-all duration-150 hover:bg-ana-brand-hover hover:shadow-glow-strong disabled:cursor-not-allowed disabled:opacity-50"
       >
+        <svg aria-hidden="true" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
         Start Ana
       </button>
     </div>

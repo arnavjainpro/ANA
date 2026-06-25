@@ -4,15 +4,22 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Cursor-inspired professional black/white palette
+        // Cursor-inspired professional black/white palette, now anchored by the
+        // indigo brand accent shared with the diagram design system below.
         ana: {
           bg: '#0a0a0a',        // Pure black background
           panel: '#141415',      // Slightly lighter for panels/sidebars
           border: '#2a2a2a',     // Subtle borders
-          accent: '#ffffff',     // White for primary accents
+          accent: '#ffffff',     // White — reserved for high-emphasis text
           text: '#e0e0e0',       // Off-white text
           'text-muted': '#888888', // Muted gray
           hover: '#1a1a1a',      // Hover state
+          // Blue brand accent (mirrors accent.primary) — primary CTAs, the
+          // active nav indicator, focus rings, and brand marks.
+          brand: '#3B82F6',
+          'brand-hover': '#2563EB',
+          'brand-soft': 'rgba(59,130,246,0.12)',
+          'brand-border': 'rgba(59,130,246,0.4)',
         },
         // Canonical design-system tokens (diagram panel + going forward).
         surface: {
@@ -30,18 +37,50 @@ module.exports = {
         },
         edge: {
           default: '#3A3A45',
-          active: '#6366F1',
+          active: '#3B82F6',
           label: '#6B7280',
         },
         accent: {
-          primary: '#6366F1', // indigo — Ana brand color
-          glow: 'rgba(99,102,241,0.15)',
+          primary: '#3B82F6', // blue — Ana brand color
+          glow: 'rgba(59,130,246,0.15)',
         },
       },
       boxShadow: {
         node: '0 0 0 1px var(--tw-shadow-color), 0 4px 24px -4px var(--tw-shadow-color)',
-        panel: '0 0 40px -8px rgba(99,102,241,0.08)',
-        'glow-sm': '0 0 12px rgba(99,102,241,0.3)',
+        panel: '0 0 40px -8px rgba(59,130,246,0.08)',
+        'glow-sm': '0 0 12px rgba(59,130,246,0.3)',
+        // Brand glow for the active nav indicator + primary buttons.
+        glow: '0 0 0 1px rgba(59,130,246,0.4), 0 4px 16px -2px rgba(59,130,246,0.4)',
+        'glow-strong': '0 0 0 1px rgba(59,130,246,0.5), 0 6px 24px -4px rgba(59,130,246,0.55)',
+        // Soft elevation for raised chrome (top bar, composer, cards).
+        elevate: '0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.7)',
+        'focus-brand': '0 0 0 1px rgba(59,130,246,0.6), 0 0 0 4px rgba(59,130,246,0.15)',
+      },
+      backgroundImage: {
+        'brand-sheen': 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%)',
+      },
+      keyframes: {
+        'fade-in-up': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'scale-in': {
+          '0%': { opacity: '0', transform: 'scale(0.96)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+      },
+      animation: {
+        'fade-in-up': 'fade-in-up 0.35s cubic-bezier(0.16,1,0.3,1) both',
+        'scale-in': 'scale-in 0.18s cubic-bezier(0.16,1,0.3,1) both',
+        shimmer: 'shimmer 1.6s ease-in-out infinite',
+      },
+      transitionTimingFunction: {
+        // Snappy, slightly overshooting ease for entering elements.
+        emphasized: 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       fontFamily: {
         sans: ['Inter Variable', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],

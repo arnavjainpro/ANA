@@ -93,9 +93,12 @@ export function Composer(): JSX.Element {
     applyResult(result);
   }
 
+  const canSend = ready && !busy && text.trim().length > 0;
+
   return (
-    <div className="flex flex-col gap-2 border-t border-ana-border bg-ana-panel p-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1.5 border-t border-ana-border bg-ana-panel p-3">
+      {/* Input + send share a single bordered shell that lights up on focus. */}
+      <div className="group flex items-center gap-2 rounded-xl border border-ana-border bg-ana-bg px-2 py-1.5 transition-all duration-150 focus-within:border-ana-brand-border focus-within:shadow-focus-brand">
         <input
           type="text"
           value={text}
@@ -116,27 +119,37 @@ export function Composer(): JSX.Element {
                 : 'Index a repo to begin…'
           }
           disabled={!ready || busy}
-          className="flex-1 rounded border border-ana-border bg-ana-bg px-3 py-2 text-sm text-ana-text outline-none placeholder:text-ana-text-muted focus:border-ana-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 bg-transparent px-2 py-1 text-sm text-ana-text outline-none placeholder:text-ana-text-muted disabled:cursor-not-allowed disabled:opacity-50"
         />
         <button
           type="button"
           onClick={() => void send()}
-          disabled={!ready || busy || !text.trim()}
-          aria-disabled={!ready || busy || !text.trim()}
+          disabled={!canSend}
+          aria-disabled={!canSend}
           aria-busy={busy}
           aria-label="Send message"
-          className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all duration-150 ${
+            canSend
+              ? 'bg-ana-brand text-white shadow-glow hover:bg-ana-brand-hover hover:shadow-glow-strong'
+              : 'cursor-not-allowed bg-ana-hover text-ana-text-muted'
+          }`}
         >
           {busy ? (
-            <svg aria-hidden="true" className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m0 0h6" />
+            <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
             </svg>
           ) : (
-            'Send'
+            <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
           )}
         </button>
       </div>
-      <p className="text-xs text-ana-text-muted px-1">Shift+Enter for multiline</p>
+      <p className="px-1 text-[11px] text-ana-text-muted">
+        <kbd className="font-sans font-medium text-ana-text-muted">Shift</kbd> +{' '}
+        <kbd className="font-sans font-medium text-ana-text-muted">Enter</kbd> for a new line
+      </p>
     </div>
   );
 }

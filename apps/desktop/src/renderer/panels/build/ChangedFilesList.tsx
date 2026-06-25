@@ -12,8 +12,9 @@ export function ChangedFilesList(): JSX.Element | null {
   if (lastPatches.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto border-b border-ana-border bg-ana-panel px-3 py-2">
-      <span className="flex-shrink-0 text-xs font-semibold uppercase tracking-wide text-ana-text-muted">
+    <div className="flex items-center gap-2 overflow-x-auto border-b border-ana-border bg-ana-panel/80 px-3 py-2 backdrop-blur-md">
+      <span className="flex flex-shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ana-text-muted">
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
         Changed
       </span>
       {lastPatches.map((patch) => {
@@ -26,10 +27,10 @@ export function ChangedFilesList(): JSX.Element | null {
             onClick={() => void openFile(patch.path)}
             title={`${patch.path} — ${patch.summary}`}
             aria-current={isActive ? 'true' : undefined}
-            className={`flex-shrink-0 rounded px-2 py-1 font-mono text-xs transition-colors ${
+            className={`flex-shrink-0 animate-fade-in-up rounded-md border px-2.5 py-1 font-mono text-xs transition-all duration-150 ${
               isActive
-                ? 'bg-ana-accent text-ana-bg'
-                : 'bg-ana-bg text-ana-text hover:bg-ana-hover'
+                ? 'border-ana-brand-border bg-ana-brand text-white shadow-glow'
+                : 'border-ana-border bg-ana-bg text-ana-text hover:border-ana-brand-border hover:bg-ana-hover'
             }`}
           >
             {name}

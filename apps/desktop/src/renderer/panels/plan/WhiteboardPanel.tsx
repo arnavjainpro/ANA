@@ -10,11 +10,17 @@ export function WhiteboardPanel(): JSX.Element {
   if (!whiteboard || whiteboard.stories.length === 0) {
     return (
       <FadeIn className="flex h-full flex-col bg-ana-bg">
-        <div className="border-b border-ana-border px-6 py-4">
-          <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Plan</h2>
+        <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+          <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">Plan</h2>
+          <p className="mt-0.5 text-xs text-ana-text-muted">User stories &amp; implementation tasks</p>
         </div>
-        <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-ana-text-muted">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-ana-border bg-ana-panel">
+            <svg aria-hidden="true" className="h-6 w-6 text-ana-text-muted" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m-6-8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+            </svg>
+          </span>
+          <p className="max-w-xs text-sm leading-relaxed text-ana-text-muted">
             Describe a feature and Ana will build a plan here.
           </p>
         </div>
@@ -42,9 +48,9 @@ export function WhiteboardPanel(): JSX.Element {
   return (
     <FadeIn className="flex h-full flex-col bg-ana-bg">
       {/* Header */}
-      <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-        <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Plan</h2>
-        <p className="mt-1 text-xs text-ana-text-muted">User stories & implementation tasks</p>
+      <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+        <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">Plan</h2>
+        <p className="mt-0.5 text-xs text-ana-text-muted">User stories &amp; implementation tasks</p>
       </div>
 
       {/* Content: Stories */}
@@ -62,7 +68,7 @@ export function WhiteboardPanel(): JSX.Element {
                   type="button"
                   onClick={() => toggleStory(story.id)}
                   aria-expanded={isExpanded}
-                  className="w-full px-6 py-4 text-left hover:bg-ana-hover transition-colors"
+                  className="w-full px-6 py-4 text-left transition-colors hover:bg-ana-hover"
                 >
                   <div className="flex items-start gap-3">
                     <div className="pt-1">
@@ -79,7 +85,7 @@ export function WhiteboardPanel(): JSX.Element {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="inline-block px-2 py-1 rounded text-xs font-semibold text-ana-bg bg-ana-accent">
+                        <span className="inline-block rounded-md bg-ana-brand-soft px-2 py-0.5 text-xs font-semibold text-ana-brand ring-1 ring-inset ring-ana-brand-border">
                           {story.id}
                         </span>
                         <span className="text-xs text-ana-text-muted">As {story.as}</span>
@@ -97,13 +103,16 @@ export function WhiteboardPanel(): JSX.Element {
                     {/* Acceptance Criteria */}
                     {criteria.length > 0 && (
                       <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-ana-text-muted mb-2">
-                          ✓ Acceptance Criteria
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ana-text-muted">
+                          <svg aria-hidden="true" className="h-3.5 w-3.5 text-ana-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Acceptance Criteria
                         </h4>
                         <ul className="space-y-1">
                           {criteria.map((item, i) => (
                             <li key={i} className="flex items-start gap-2 text-sm text-ana-text">
-                              <span className="text-ana-accent mt-0.5">•</span>
+                              <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-ana-brand" />
                               <span>{item}</span>
                             </li>
                           ))}
@@ -114,8 +123,11 @@ export function WhiteboardPanel(): JSX.Element {
                     {/* Tasks */}
                     {tasks.length > 0 && (
                       <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-ana-text-muted mb-2">
-                          → Implementation Tasks
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ana-text-muted">
+                          <svg aria-hidden="true" className="h-3.5 w-3.5 text-ana-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                          </svg>
+                          Implementation Tasks
                         </h4>
                         <div className="space-y-1.5">
                           {tasks.map((task) => (
@@ -126,7 +138,7 @@ export function WhiteboardPanel(): JSX.Element {
                               <div className="flex items-start gap-2">
                                 <input
                                   type="checkbox"
-                                  className="mt-0.5 w-3.5 h-3.5 cursor-pointer rounded border-ana-border accent-ana-accent"
+                                  className="mt-0.5 h-3.5 w-3.5 cursor-pointer rounded border-ana-border accent-ana-brand"
                                   disabled
                                 />
                                 <div className="flex-1 min-w-0">

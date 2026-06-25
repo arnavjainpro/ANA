@@ -140,8 +140,8 @@ export default function App(): JSX.Element {
         <div
           aria-hidden="true"
           onMouseDown={handleMouseDown}
-          className={`w-1 bg-ana-border hover:bg-ana-accent/50 cursor-col-resize transition-colors ${
-            dragging ? 'bg-ana-accent/50' : ''
+          className={`w-1 cursor-col-resize bg-ana-border transition-colors hover:bg-ana-brand ${
+            dragging ? 'bg-ana-brand' : ''
           }`}
         />
 

@@ -52,7 +52,7 @@ export function IndexingProgress(): JSX.Element | null {
     >
       <div className="h-1 w-full overflow-hidden bg-ana-border">
         <div
-          className="ana-progress-fill h-full bg-ana-accent"
+          className="ana-progress-fill h-full bg-ana-brand shadow-[0_0_8px_rgba(99,102,241,0.7)]"
           style={{ width: `${pct}%` }}
         />
       </div>

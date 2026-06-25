@@ -323,7 +323,10 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
   };
 
   const fitToPanel = (): void => {
-    transformRef.current?.resetTransform(200);
+    // Reset to 1:1 and re-center. `resetTransform` alone snaps the content to
+    // the top-left corner (no re-center), which looked broken; `centerView`
+    // restores scale 1 and centers the diagram in the panel.
+    transformRef.current?.centerView(1, 200);
   };
 
   const handleCopy = (): void => {
@@ -401,7 +404,7 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
           <TransformWrapper
             ref={transformRef}
             initialScale={1}
-            minScale={0.3}
+            minScale={0.5}
             maxScale={3}
             centerOnInit
             wheel={{ step: 0.08 }}

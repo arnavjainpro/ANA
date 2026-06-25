@@ -9,17 +9,17 @@ export function PanelSkeleton(): JSX.Element {
   return (
     <FadeIn className="flex h-full flex-col bg-ana-bg">
       {/* Header band, matching the panel headers' height. */}
-      <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-        <div className="h-4 w-40 rounded bg-ana-hover ana-pulse" aria-hidden="true" />
-        <div className="mt-2 h-3 w-56 rounded bg-ana-hover ana-pulse" aria-hidden="true" />
+      <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+        <div className="h-3.5 w-40 overflow-hidden rounded bg-ana-hover ana-shimmer" aria-hidden="true" />
+        <div className="mt-2 h-3 w-56 overflow-hidden rounded bg-ana-hover ana-shimmer" aria-hidden="true" />
       </div>
 
       {/* Body blocks. */}
       <div className="flex-1 space-y-4 overflow-hidden p-6">
-        <div className="h-32 w-full rounded bg-ana-hover ana-pulse" aria-hidden="true" />
-        <div className="h-4 w-3/4 rounded bg-ana-hover ana-pulse" aria-hidden="true" />
-        <div className="h-4 w-2/3 rounded bg-ana-hover ana-pulse" aria-hidden="true" />
-        <div className="h-4 w-1/2 rounded bg-ana-hover ana-pulse" aria-hidden="true" />
+        <div className="h-32 w-full overflow-hidden rounded-lg bg-ana-hover ana-shimmer" aria-hidden="true" />
+        <div className="h-4 w-3/4 overflow-hidden rounded bg-ana-hover ana-shimmer" aria-hidden="true" />
+        <div className="h-4 w-2/3 overflow-hidden rounded bg-ana-hover ana-shimmer" aria-hidden="true" />
+        <div className="h-4 w-1/2 overflow-hidden rounded bg-ana-hover ana-shimmer" aria-hidden="true" />
       </div>
 
       <span className="sr-only">Ana is thinking…</span>

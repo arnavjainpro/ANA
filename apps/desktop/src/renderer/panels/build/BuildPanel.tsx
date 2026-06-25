@@ -28,14 +28,11 @@ export function BuildPanel(): JSX.Element {
   if (!selectedRepo) {
     return (
       <div className="flex h-full flex-col bg-ana-bg">
-        <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-          <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Build</h2>
-        </div>
-        <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-ana-text-muted">
-            Connect and select a repository to start building.
-          </p>
-        </div>
+        <PanelHeader subtitle="Ana edits your local working copy" />
+        <BuildEmptyState
+          title="No repository selected"
+          body="Connect and select a repository to start building."
+        />
       </div>
     );
   }
@@ -43,21 +40,20 @@ export function BuildPanel(): JSX.Element {
   if (!repoPath) {
     return (
       <div className="flex h-full flex-col bg-ana-bg">
-        <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-          <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Build</h2>
-          <p className="mt-1 text-xs text-ana-text-muted">Ana edits your local working copy</p>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <p className="text-sm text-ana-text-muted">
-            Choose your local clone of <span className="text-ana-text">{selectedRepo.full_name}</span> so
-            Ana can make changes.
+        <PanelHeader subtitle="Ana edits your local working copy" />
+        <div className="flex flex-1 animate-fade-in-up flex-col items-center justify-center gap-4 p-8 text-center">
+          <FolderIcon />
+          <p className="max-w-sm text-sm leading-relaxed text-ana-text-muted">
+            Choose your local clone of{' '}
+            <span className="font-medium text-ana-text">{selectedRepo.full_name}</span> so Ana can make
+            changes.
           </p>
           <button
             type="button"
             onClick={() => void selectRepoPath(selectedRepo.full_name)}
             disabled={selectingPath}
             aria-disabled={selectingPath}
-            className="rounded px-4 py-2 text-sm font-medium text-ana-bg bg-ana-accent hover:bg-ana-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-ana-brand px-5 py-2.5 text-sm font-medium text-white shadow-glow transition-all duration-150 hover:bg-ana-brand-hover hover:shadow-glow-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             {selectingPath ? 'Opening…' : 'Select local folder'}
           </button>
@@ -69,17 +65,66 @@ export function BuildPanel(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col bg-ana-bg">
-      <div className="border-b border-ana-border px-6 py-4 bg-ana-panel">
-        <h2 tabIndex={-1} className="text-lg font-semibold text-ana-text">Build</h2>
-        <p className="mt-1 truncate text-xs text-ana-text-muted" title={repoPath}>
-          {repoPath}
-        </p>
-      </div>
+      <PanelHeader subtitle={repoPath} subtitleTitle={repoPath} mono />
       <ChangedFilesList />
       <div className="min-h-0 flex-1">
         <CodeEditor />
       </div>
       <UndoBar />
     </div>
+  );
+}
+
+/** Frosted-glass panel header, matching the Understand diagram panel chrome. */
+function PanelHeader({
+  subtitle,
+  subtitleTitle,
+  mono,
+}: {
+  subtitle: string;
+  subtitleTitle?: string;
+  mono?: boolean;
+}): JSX.Element {
+  return (
+    <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+      <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">
+        Build
+      </h2>
+      <p
+        className={`mt-0.5 truncate text-xs text-ana-text-muted ${mono ? 'font-mono' : ''}`}
+        title={subtitleTitle}
+      >
+        {subtitle}
+      </p>
+    </div>
+  );
+}
+
+function BuildEmptyState({ title, body }: { title: string; body: string }): JSX.Element {
+  return (
+    <div className="flex flex-1 animate-fade-in-up flex-col items-center justify-center gap-3 p-8 text-center">
+      <FolderIcon />
+      <div>
+        <p className="text-sm font-medium text-ana-text">{title}</p>
+        <p className="mt-1 max-w-xs text-xs leading-relaxed text-ana-text-muted">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function FolderIcon(): JSX.Element {
+  return (
+    <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-ana-border bg-ana-panel">
+      <svg
+        aria-hidden="true"
+        className="h-6 w-6 text-ana-text-muted"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+      </svg>
+    </span>
   );
 }
