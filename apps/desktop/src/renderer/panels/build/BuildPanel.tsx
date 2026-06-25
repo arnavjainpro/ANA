@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useRepoStore } from '../../store/repoStore';
 import { useBuildStore } from '../../store/buildStore';
+import { ChangedFilesList } from './ChangedFilesList';
 import { CodeEditor } from './CodeEditor';
 import { UndoBar } from './UndoBar';
 
@@ -74,6 +75,7 @@ export function BuildPanel(): JSX.Element {
           {repoPath}
         </p>
       </div>
+      <ChangedFilesList />
       <div className="min-h-0 flex-1">
         <CodeEditor />
       </div>
