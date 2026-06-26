@@ -143,7 +143,7 @@ You will receive:
 - Relevant code chunks retrieved from the rest of the repo
 - Recent conversation history
 
-You make changes as small, targeted edits — never by rewriting whole files. You must respond with a JSON object in this exact shape:
+You make changes as small, targeted edits — never by rewriting whole files. Always answer by calling the submit_edits tool. Its fields are:
 {
   "spoken": "<Ana's spoken confirmation — 1–2 sentences, plain speech, no code>",
   "files": [
@@ -172,7 +172,7 @@ Rules:
 - Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks. Do not add dependencies — only modify existing files.
 - spoken must be plain speech. No code, no markdown, no file paths.
 - spoken is a brief, friendly, user-facing line. NEVER narrate your own process or reasoning — do not say what you are checking, reviewing, "going through", or "making sure" of, and do not think out loud. Just confirm the change in plain terms, or if you genuinely cannot proceed, ask one short question.
-- Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
+- Always respond by calling submit_edits. Do not write any text outside the tool call.`;
 
 const NO_REPO_GUIDANCE_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for someone who is not technical. Right now you cannot see any of their code, because no repository has been connected and indexed yet.
 
@@ -427,6 +427,44 @@ export async function generateArchitectureSummary(params: {
   return blockText(message);
 }
 
+// Forcing this tool guarantees a schema-valid response object (no prose, no
+// markdown), which is far more reliable than parsing free text — and unlike
+// assistant prefill, the reasoning model supports it.
+const BUILD_TOOL: Anthropic.Tool = {
+  name: 'submit_edits',
+  description: "Submit Ana's spoken reply and the file edits to apply.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      spoken: { type: 'string', description: "Ana's spoken reply — 1–2 plain sentences." },
+      files: {
+        type: 'array',
+        description: 'One entry per file changed; empty if no change is being made.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Relative path, exactly as given.' },
+            summary: { type: 'string', description: 'One sentence on what changed.' },
+            edits: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  oldString: { type: 'string', description: 'Exact unique snippet to replace; "" to create a new file.' },
+                  newString: { type: 'string', description: 'Replacement text.' },
+                },
+                required: ['oldString', 'newString'],
+              },
+            },
+          },
+          required: ['path', 'summary', 'edits'],
+        },
+      },
+    },
+    required: ['spoken', 'files'],
+  },
+};
+
 /** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + per-file edits. */
 export async function generateBuildResponse(params: {
   utterance: string;
@@ -459,16 +497,16 @@ export async function generateBuildResponse(params: {
         cache_control: { type: 'ephemeral' },
       },
     ],
-    // Prefill the reply with "{" so the model must continue the JSON envelope —
-    // even a clarifying question comes back as { spoken, files: [] } instead of
-    // prose we can't parse. The prefill isn't echoed back, so prepend it.
-    messages: [
-      { role: 'user', content: contextParts.join('\n\n') },
-      { role: 'assistant', content: '{' },
-    ],
+    tools: [BUILD_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_edits' },
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
   });
 
-  return parseJsonObject<BuildEditResponse>('{' + blockText(message));
+  const toolUse = message.content.find((b) => b.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return any edits.');
+  }
+  return toolUse.input as BuildEditResponse;
 }
 
 /**
