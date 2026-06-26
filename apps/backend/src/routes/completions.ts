@@ -152,7 +152,7 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
           publishUndoRequest();
           reply.raw.write(chunkLine(base, { content: pickUndoAck() }, null));
         } else if (intent.mode === 'Build') {
-          publishBuildRequest(transcript);
+          publishBuildRequest(transcript, history);
           reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));
         } else {
           publishPanelInBackground(active.repoId, transcript, history, {

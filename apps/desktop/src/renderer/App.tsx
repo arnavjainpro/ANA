@@ -9,11 +9,11 @@ import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
-import { useConversationStore, recentHistory } from './store/conversationStore';
+import { useConversationStore } from './store/conversationStore';
 import { useBuildStore } from './store/buildStore';
 import { isIpcError } from './lib/ipc';
 import { speakViaTavus } from './lib/voiceEcho';
-import type { FilePatch } from '../types';
+import type { ConversationTurn, FilePatch } from '../types';
 
 // Varied lines Ana speaks once a voice change has actually been applied.
 const BUILD_DONE = [
@@ -28,7 +28,7 @@ function pickDone(): string {
 }
 
 /** Apply a spoken change request to disk via the existing Build pipeline. */
-async function handleVoiceBuild(transcript: string): Promise<void> {
+async function handleVoiceBuild(transcript: string, history: ConversationTurn[]): Promise<void> {
   const repo = useRepoStore.getState();
   const convo = useConversationStore.getState();
   const build = useBuildStore.getState();
@@ -38,7 +38,8 @@ async function handleVoiceBuild(transcript: string): Promise<void> {
   // Resolve a stored folder if Build mode was never opened this session.
   if (!build.repoPath && fullName) await build.ensureRepoPath(fullName);
 
-  const history = recentHistory(convo.history);
+  // History comes from the backend (Tavus) — the renderer doesn't record voice
+  // turns, so this is how Build sees what was just planned out loud.
   convo.appendUserTurn(transcript);
   const res = await useBuildStore.getState().runTurn({
     transcript,
@@ -105,7 +106,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const unsubscribe = window.ana.conversation.onPanelUpdate((evt) => {
       if (evt.type === 'build-request') {
-        void handleVoiceBuild(evt.transcript);
+        void handleVoiceBuild(evt.transcript, evt.history);
         return;
       }
       if (evt.type === 'undo-request') {

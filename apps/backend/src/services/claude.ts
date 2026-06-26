@@ -245,10 +245,10 @@ function blockText(message: Anthropic.Message): string {
     .trim();
 }
 
-function formatHistory(history: ConversationTurn[]): string {
+function formatHistory(history: ConversationTurn[], maxTurns = 6): string {
   if (history.length === 0) return '(no prior conversation)';
   return history
-    .slice(-6)
+    .slice(-maxTurns)
     .map((t) => `${t.role === 'user' ? 'User' : 'Ana'}: ${t.content}`)
     .join('\n');
 }
@@ -428,15 +428,18 @@ export async function generateBuildResponse(params: {
   const contextParts = [
     `Full contents of the target file(s):\n${formatFiles(files)}`,
     `Retrieved code chunks:\n${formatChunks(chunks)}`,
-    `Recent conversation:\n${formatHistory(history)}`,
+    // Wider window than other calls so a build that follows a planning chat
+    // still sees what was planned.
+    `Recent conversation:\n${formatHistory(history, 14)}`,
     `Classified intent: ${JSON.stringify(intent)}`,
     `User request: ${utterance}`,
   ];
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
-    // Generous ceiling so a long file's `updated` body isn't truncated into invalid JSON.
-    max_tokens: 16000,
+    // High ceiling: every edit re-emits the whole file, so a long file's `updated`
+    // body must fit or the JSON truncates and fails to parse.
+    max_tokens: 32000,
     system: [
       {
         type: 'text',

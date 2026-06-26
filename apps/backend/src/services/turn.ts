@@ -8,6 +8,7 @@ import { retrieveChunks } from './retrieval.js';
 import { getFileContents } from './github.js';
 import { validatePatches, generateOperationId } from './builder.js';
 import * as history from './history.js';
+import { AppError } from '../lib/errors.js';
 import type {
   AnaResponse,
   BuildPlan,
@@ -195,7 +196,17 @@ export async function processBuildTurn(
 
     return { spoken: response.spoken, patches: response.patches, operationId };
   } catch (err) {
-    console.error('[build] processing failed:', err instanceof Error ? err.message : err);
+    const code = err instanceof AppError ? err.code : undefined;
+    console.error('[build] processing failed:', code ?? '', err instanceof Error ? err.message : err);
+    // A truncated/unparseable model reply almost always means the target file
+    // was too large to rewrite whole — tell the user something actionable.
+    if (code === 'CLAUDE_BAD_JSON') {
+      return {
+        spoken: "That file's a bit too big for me to rewrite all at once — try a smaller or more specific change.",
+        patches: [],
+        operationId: '',
+      };
+    }
     return { spoken: SPOKEN_FALLBACK, patches: [], operationId: '' };
   }
 }

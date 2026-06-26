@@ -69,6 +69,8 @@ export interface PanelEvent extends TurnResult {
 export interface BuildRequestEvent {
   type: 'build-request';
   transcript: string;
+  /** Prior conversation (from Tavus) so Build has the planning context. */
+  history: ConversationTurn[];
 }
 
 /** A spoken request to undo the last change applied this session. */

@@ -3,7 +3,7 @@
 // by `type`: 'panel' renders a diagram/board; 'build-request' hands a spoken
 // change to the desktop's Build pipeline to apply on disk.
 
-import type { Mode } from '../lib/types.js';
+import type { ConversationTurn, Mode } from '../lib/types.js';
 
 export interface PanelEvent {
   type: 'panel';
@@ -17,6 +17,8 @@ export interface BuildRequestEvent {
   type: 'build-request';
   /** The user's spoken utterance for the desktop's Build pipeline to act on. */
   transcript: string;
+  /** Prior conversation (from Tavus) so Build has the planning context. */
+  history: ConversationTurn[];
 }
 
 export interface UndoRequestEvent {
@@ -38,8 +40,8 @@ export function publishPanel(event: Omit<PanelEvent, 'type'>): void {
 }
 
 /** Hand a voice change request to the desktop to apply on the local working copy. */
-export function publishBuildRequest(transcript: string): void {
-  emit({ type: 'build-request', transcript });
+export function publishBuildRequest(transcript: string, history: ConversationTurn[]): void {
+  emit({ type: 'build-request', transcript, history });
 }
 
 /** Ask the desktop to undo the last change applied this session. */
