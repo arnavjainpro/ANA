@@ -10,7 +10,12 @@ import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
 import { getArchitectureSummary } from '../services/architectureSummary.js';
 import { getActiveRepo } from '../services/activeRepo.js';
-import { publishPanel, publishBuildRequest, publishUndoRequest } from '../services/panelBus.js';
+import {
+  publishPanel,
+  publishBuildRequest,
+  publishUndoRequest,
+  publishRedoRequest,
+} from '../services/panelBus.js';
 import { env } from '../lib/env.js';
 import type { ConversationTurn, IntentClassification } from '../lib/types.js';
 
@@ -34,6 +39,13 @@ const UNDO_ACKS = ['Sure, undoing that.', 'Okay, rolling that back.', 'Got it, r
 
 function pickUndoAck(): string {
   return UNDO_ACKS[Math.floor(Math.random() * UNDO_ACKS.length)] ?? UNDO_ACKS[0];
+}
+
+// Spoken while the desktop re-applies the change; the outcome follows.
+const REDO_ACKS = ['Sure, redoing that.', 'Okay, putting that back.', 'Got it, redoing that.'] as const;
+
+function pickRedoAck(): string {
+  return REDO_ACKS[Math.floor(Math.random() * REDO_ACKS.length)] ?? REDO_ACKS[0];
 }
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
@@ -151,6 +163,9 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
         if (intent.undo) {
           publishUndoRequest();
           reply.raw.write(chunkLine(base, { content: pickUndoAck() }, null));
+        } else if (intent.redo) {
+          publishRedoRequest();
+          reply.raw.write(chunkLine(base, { content: pickRedoAck() }, null));
         } else if (intent.mode === 'Build') {
           publishBuildRequest(transcript, history);
           reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));

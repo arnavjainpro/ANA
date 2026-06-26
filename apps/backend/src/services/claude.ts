@@ -40,11 +40,13 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "mode": "Understand | Plan | Build | Debug | Review",
   "intent": "<one sentence summary of what the user wants>",
   "target": "<file, feature, or component if mentioned, else null>",
-  "undo": true | false
+  "undo": true | false,
+  "redo": true | false
 }
 
 Rules:
 - Set "undo" to true when the user is asking to undo, revert, take back, or roll back the last change ("undo that", "revert it", "go back"). Otherwise set it to false.
+- Set "redo" to true when the user is asking to redo or re-apply a change they just undid ("redo that", "redo the change", "put it back", "do it again"). Otherwise set it to false.
 - Choose "Understand" when the user wants to know what the codebase does or how something works.
 - Choose "Build" when the user wants you to make a concrete change to the existing code right now — add, edit, change, remove, rename, fix, or update something in a file. Imperative phrasing like "add…", "change…", "make it…", "remove…", "rename…", or "fix…" is almost always Build.
 - Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.

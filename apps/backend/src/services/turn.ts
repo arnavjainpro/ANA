@@ -201,6 +201,8 @@ export async function processBuildTurn(
       patches,
       summary,
     });
+    // A fresh change invalidates anything that was undone.
+    history.clearRedo(req.sessionId);
 
     return { spoken: response.spoken, patches, operationId };
   } catch (err) {
@@ -226,12 +228,24 @@ export async function processBuildTurn(
 export function undoBuild(sessionId: string): UndoResult {
   const op = history.pop(sessionId);
   if (!op) return { spoken: 'There is nothing to undo.', patches: [] };
+  history.pushRedo(sessionId, op);
   const reversed = op.patches.map((patch) => ({
     ...patch,
     original: patch.updated,
     updated: patch.original,
   }));
   return { spoken: 'Undone.', patches: reversed };
+}
+
+/**
+ * Re-apply the most recently undone operation: pop it off the redo stack, put it
+ * back on the undo stack, and return its forward patches for the client to apply.
+ */
+export function redoBuild(sessionId: string): UndoResult {
+  const op = history.popRedo(sessionId);
+  if (!op) return { spoken: 'There is nothing to redo.', patches: [] };
+  history.push(sessionId, op);
+  return { spoken: 'Redone.', patches: op.patches };
 }
 
 /** Drop a session's undo history (called when the session ends). */

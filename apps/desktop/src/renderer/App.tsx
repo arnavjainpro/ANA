@@ -72,6 +72,14 @@ async function handleVoiceUndo(): Promise<void> {
   speakViaTavus(spoken);
 }
 
+/** Re-apply the most recently undone change in response to a spoken "redo". */
+async function handleVoiceRedo(): Promise<void> {
+  const spoken = await useBuildStore.getState().redo();
+  if (!spoken) return;
+  useConversationStore.getState().pushAssistant(spoken);
+  speakViaTavus(spoken);
+}
+
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
@@ -111,6 +119,10 @@ export default function App(): JSX.Element {
       }
       if (evt.type === 'undo-request') {
         void handleVoiceUndo();
+        return;
+      }
+      if (evt.type === 'redo-request') {
+        void handleVoiceRedo();
         return;
       }
       setActiveMode(evt.mode);

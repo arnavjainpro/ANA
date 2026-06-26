@@ -44,6 +44,8 @@ const api: AnaApi = {
     turn: (req: BuildTurnRequest) => ipcRenderer.invoke('build:turn', req),
     undo: (sessionId: string, repoPath: string) =>
       ipcRenderer.invoke('build:undo', sessionId, repoPath),
+    redo: (sessionId: string, repoPath: string) =>
+      ipcRenderer.invoke('build:redo', sessionId, repoPath),
     endSession: (sessionId: string) => ipcRenderer.invoke('build:endSession', sessionId),
   },
   fs: {

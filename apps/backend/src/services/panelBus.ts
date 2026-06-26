@@ -25,7 +25,11 @@ export interface UndoRequestEvent {
   type: 'undo-request';
 }
 
-export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent;
+export interface RedoRequestEvent {
+  type: 'redo-request';
+}
+
+export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent | RedoRequestEvent;
 
 type Listener = (event: BusEvent) => void;
 
@@ -47,6 +51,11 @@ export function publishBuildRequest(transcript: string, history: ConversationTur
 /** Ask the desktop to undo the last change applied this session. */
 export function publishUndoRequest(): void {
   emit({ type: 'undo-request' });
+}
+
+/** Ask the desktop to redo the most recently undone change. */
+export function publishRedoRequest(): void {
+  emit({ type: 'redo-request' });
 }
 
 /** Subscribe to bus events; returns an unsubscribe function. */
