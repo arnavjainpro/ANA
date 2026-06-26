@@ -3,7 +3,6 @@ import { TopBar } from './components/TopBar';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTreeSection } from './components/FileTreeSection';
 import { AnaConversation } from './components/AnaConversation';
-import { Composer } from './components/Composer';
 import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
@@ -13,7 +12,20 @@ import { useRepoStore } from './store/repoStore';
 import { useConversationStore, recentHistory } from './store/conversationStore';
 import { useBuildStore } from './store/buildStore';
 import { isIpcError } from './lib/ipc';
+import { speakViaTavus } from './lib/voiceEcho';
 import type { FilePatch } from '../types';
+
+// Varied lines Ana speaks once a voice change has actually been applied.
+const BUILD_DONE = [
+  'Okay, just made that change.',
+  "Done — that's updated.",
+  'There we go, that change is in.',
+  "All set, I've made that change.",
+] as const;
+
+function pickDone(): string {
+  return BUILD_DONE[Math.floor(Math.random() * BUILD_DONE.length)] ?? BUILD_DONE[0];
+}
 
 /** Apply a spoken change request to disk via the existing Build pipeline. */
 async function handleVoiceBuild(transcript: string): Promise<void> {
@@ -35,10 +47,14 @@ async function handleVoiceBuild(transcript: string): Promise<void> {
     repoFullName: fullName,
   });
   if (!res) return; // No local folder chosen — buildStore set the guiding error.
+
   if (res.patches.length > 0) {
     for (const patch of res.patches) convo.pushAssistant(voiceNarration(patch));
+    speakViaTavus(pickDone());
   } else if (res.spoken) {
+    // No change made — voice Ana's clarifying question / reason so it isn't silent.
     convo.pushAssistant(res.spoken);
+    speakViaTavus(res.spoken);
   }
 }
 
@@ -171,7 +187,6 @@ export default function App(): JSX.Element {
           <div className="flex-1 min-h-0 overflow-hidden">
             <AnaConversation />
           </div>
-          <Composer />
         </aside>
 
         <div

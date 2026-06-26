@@ -11,6 +11,7 @@ import {
   useVideoTrack,
 } from '@daily-co/daily-react';
 import { useConversationStore } from '../store/conversationStore';
+import { bindVoice } from '../lib/voiceEcho';
 
 /**
  * Renders the Tavus call ourselves via the Daily call object (the same engine
@@ -39,6 +40,17 @@ function CallJoiner({ url }: { url: string }): null {
       void daily.leave();
     };
   }, [daily, url]);
+  return null;
+}
+
+/** Expose the call object so the voice-Build handler can echo a follow-up line. */
+function VoiceEchoBridge(): null {
+  const daily = useDaily();
+  const conversationId = useConversationStore((s) => s.conversationId);
+  useEffect(() => {
+    bindVoice(daily, conversationId);
+    return () => bindVoice(null, null);
+  }, [daily, conversationId]);
   return null;
 }
 
@@ -172,6 +184,7 @@ export function CviConversation({ conversationUrl }: { conversationUrl: string }
     // Passing `url` makes the provider create (and join) the call object.
     <DailyProvider url={conversationUrl}>
       <CallJoiner url={conversationUrl} />
+      <VoiceEchoBridge />
       <CallStage />
     </DailyProvider>
   );
