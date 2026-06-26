@@ -44,8 +44,9 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
 
 Rules:
 - Choose "Understand" when the user wants to know what the codebase does or how something works.
-- Choose "Plan" when the user wants to build, add, or design a feature or product.
-- Only "Understand" and "Plan" are currently supported. If the utterance fits Build, Debug, or Review, still return that label honestly.
+- Choose "Build" when the user wants you to make a concrete change to the existing code right now — add, edit, change, remove, rename, fix, or update something in a file. Imperative phrasing like "add…", "change…", "make it…", "remove…", "rename…", or "fix…" is almost always Build.
+- Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.
+- If the utterance fits Debug or Review, return that label honestly.
 - target is null unless a concrete file, function, feature, or component is named.
 - Respond with the JSON object only.`;
 
