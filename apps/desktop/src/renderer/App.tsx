@@ -63,6 +63,14 @@ function voiceNarration(patch: FilePatch): string {
   return `Updated ${name} — ${patch.summary}`;
 }
 
+/** Reverse the last change in response to a spoken "undo". */
+async function handleVoiceUndo(): Promise<void> {
+  const spoken = await useBuildStore.getState().undo();
+  if (!spoken) return;
+  useConversationStore.getState().pushAssistant(spoken);
+  speakViaTavus(spoken);
+}
+
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
@@ -98,6 +106,10 @@ export default function App(): JSX.Element {
     const unsubscribe = window.ana.conversation.onPanelUpdate((evt) => {
       if (evt.type === 'build-request') {
         void handleVoiceBuild(evt.transcript);
+        return;
+      }
+      if (evt.type === 'undo-request') {
+        void handleVoiceUndo();
         return;
       }
       setActiveMode(evt.mode);

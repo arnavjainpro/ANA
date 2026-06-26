@@ -39,10 +39,12 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
 {
   "mode": "Understand | Plan | Build | Debug | Review",
   "intent": "<one sentence summary of what the user wants>",
-  "target": "<file, feature, or component if mentioned, else null>"
+  "target": "<file, feature, or component if mentioned, else null>",
+  "undo": true | false
 }
 
 Rules:
+- Set "undo" to true when the user is asking to undo, revert, take back, or roll back the last change ("undo that", "revert it", "go back"). Otherwise set it to false.
 - Choose "Understand" when the user wants to know what the codebase does or how something works.
 - Choose "Build" when the user wants you to make a concrete change to the existing code right now — add, edit, change, remove, rename, fix, or update something in a file. Imperative phrasing like "add…", "change…", "make it…", "remove…", "rename…", or "fix…" is almost always Build.
 - Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.
@@ -162,6 +164,7 @@ Rules:
 - Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks.
 - Do not add dependencies (npm packages) — only modify existing files.
 - spoken must be plain speech. No code, no markdown, no file paths.
+- spoken is a brief, friendly, user-facing line. NEVER narrate your own process or reasoning — do not say what you are checking, reviewing, "going through", or "making sure" of, and do not think out loud. Just confirm the change in plain terms, or if you genuinely cannot proceed, ask one short question.
 - Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
 
 const NO_REPO_GUIDANCE_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for someone who is not technical. Right now you cannot see any of their code, because no repository has been connected and indexed yet.

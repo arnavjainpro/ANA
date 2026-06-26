@@ -19,7 +19,11 @@ export interface BuildRequestEvent {
   transcript: string;
 }
 
-export type BusEvent = PanelEvent | BuildRequestEvent;
+export interface UndoRequestEvent {
+  type: 'undo-request';
+}
+
+export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent;
 
 type Listener = (event: BusEvent) => void;
 
@@ -36,6 +40,11 @@ export function publishPanel(event: Omit<PanelEvent, 'type'>): void {
 /** Hand a voice change request to the desktop to apply on the local working copy. */
 export function publishBuildRequest(transcript: string): void {
   emit({ type: 'build-request', transcript });
+}
+
+/** Ask the desktop to undo the last change applied this session. */
+export function publishUndoRequest(): void {
+  emit({ type: 'undo-request' });
 }
 
 /** Subscribe to bus events; returns an unsubscribe function. */

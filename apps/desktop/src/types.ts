@@ -71,8 +71,13 @@ export interface BuildRequestEvent {
   transcript: string;
 }
 
+/** A spoken request to undo the last change applied this session. */
+export interface UndoRequestEvent {
+  type: 'undo-request';
+}
+
 /** Events streamed to the desktop from voice (Tavus) turns. */
-export type BusEvent = PanelEvent | BuildRequestEvent;
+export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent;
 
 // --- Build mode --------------------------------------------------------------
 

@@ -10,6 +10,8 @@ export interface IntentClassification {
   mode: Mode;
   intent: string;
   target: string | null;
+  /** True when the user is asking to undo/revert the last change. */
+  undo?: boolean;
 }
 
 /** A single turn of conversation, oldest first. */
