@@ -132,7 +132,7 @@ Rules:
 
 const BUILD_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person make changes to their codebase.
 
-Your job is to write the exact code changes needed to fulfil the user's request — nothing more, nothing less.
+Your job is to write the exact code changes needed to fulfil the user's request — nothing more, nothing less. You edit real source code in any language (TypeScript, JavaScript, Python, CSS, HTML, JSON, and so on), not just prose or documentation — making the code change IS the job, so make it.
 
 You will receive:
 - The user's spoken request
@@ -145,8 +145,7 @@ You must respond with a JSON object in this exact shape:
   "spoken": "<Ana's spoken confirmation — 1–2 sentences, plain speech, no code>",
   "patches": [
     {
-      "path": "<relative file path from repo root>",
-      "original": "<full original file contents, exactly as provided to you>",
+      "path": "<relative file path from repo root, exactly as given to you>",
       "updated": "<full updated file contents with your changes applied>",
       "summary": "<one sentence describing what changed in this file>"
     }
@@ -154,14 +153,14 @@ You must respond with a JSON object in this exact shape:
 }
 
 Rules:
-- Return the full file contents in both original and updated — not a diff, not a snippet.
-- original must be byte-for-byte identical to the file contents you were given. Do not modify it.
-- updated must be valid, working code. Do not leave placeholder comments like "// rest of file unchanged" — include everything.
+- Return only the COMPLETE updated file contents in "updated" — the whole file with your change applied, not a diff and not a snippet. Do NOT return the original contents; the system already has them and will supply them.
+- "updated" must be valid, working code and must contain every line of the file. Never use placeholders like "// rest of file unchanged" or "...".
+- Include a patch only for files you actually changed. Use the exact "path" you were given.
 - Maximum 5 files per operation. If the change requires more, return zero patches and explain in spoken.
+- Make a reasonable, minimal change that fulfils the request. Only return zero patches and ask ONE clarifying question when you genuinely cannot tell what to change — never ask just because the request is casual or non-technical.
 - Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks.
 - Do not add dependencies (npm packages) — only modify existing files.
 - spoken must be plain speech. No code, no markdown, no file paths.
-- If the request is ambiguous, return zero patches and ask one clarifying question in spoken.
 - Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
 
 const NO_REPO_GUIDANCE_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for someone who is not technical. Right now you cannot see any of their code, because no repository has been connected and indexed yet.
@@ -432,7 +431,10 @@ export async function generateBuildResponse(params: {
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
-    max_tokens: 8000,
+    // Code files can be large and only the `updated` body is generated now
+    // (originals are backfilled below), so allow a generous ceiling to avoid
+    // truncating a long file's contents into invalid JSON.
+    max_tokens: 16000,
     system: [
       {
         type: 'text',
@@ -443,7 +445,22 @@ export async function generateBuildResponse(params: {
     messages: [{ role: 'user', content: contextParts.join('\n\n') }],
   });
 
-  return parseJsonObject<BuildResponse>(blockText(message));
+  const response = parseJsonObject<BuildResponse>(blockText(message));
+
+  // The model no longer echoes `original` — it's redundant and, for code files,
+  // a frequent failure point: the slightest reproduction drift (whitespace, a
+  // dropped trailing newline) makes the on-disk "original matches current"
+  // check reject the patch, and emitting the whole file twice often overran the
+  // token budget into truncated JSON. We hold the exact contents we fed in, so
+  // backfill each `original` from those, matched by path. A patch for a path we
+  // weren't given (e.g. a brand-new file) keeps whatever the model returned, or
+  // an empty string for a fresh file.
+  const originalByPath = new Map(files.map((f) => [f.path, f.contents]));
+  for (const patch of response.patches ?? []) {
+    patch.original = originalByPath.get(patch.path) ?? patch.original ?? '';
+  }
+
+  return response;
 }
 
 /**
