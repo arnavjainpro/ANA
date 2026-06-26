@@ -53,7 +53,7 @@ export function BuildPanel(): JSX.Element {
             onClick={() => void selectRepoPath(selectedRepo.full_name)}
             disabled={selectingPath}
             aria-disabled={selectingPath}
-            className="flex items-center gap-2 rounded-lg bg-ana-brand px-5 py-2.5 text-sm font-medium text-white shadow-glow transition-all duration-150 hover:bg-ana-brand-hover hover:shadow-glow-strong disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-md bg-ana-brand px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-ana-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {selectingPath ? 'Opening…' : 'Select local folder'}
           </button>
@@ -86,7 +86,7 @@ function PanelHeader({
   mono?: boolean;
 }): JSX.Element {
   return (
-    <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+    <div className="border-b border-ana-border bg-ana-panel px-6 py-3">
       <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">
         Build
       </h2>
@@ -114,7 +114,7 @@ function BuildEmptyState({ title, body }: { title: string; body: string }): JSX.
 
 function FolderIcon(): JSX.Element {
   return (
-    <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-ana-border bg-ana-panel">
+    <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ana-border bg-ana-panel">
       <svg
         aria-hidden="true"
         className="h-6 w-6 text-ana-text-muted"

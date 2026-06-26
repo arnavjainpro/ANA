@@ -95,7 +95,7 @@ export function ConnectPanel(): JSX.Element {
             aria-disabled={busy}
             aria-busy={busy}
             aria-label="Connect GitHub"
-            className="flex items-center justify-center gap-2 rounded-lg bg-ana-brand px-3 py-2 text-sm font-medium text-white shadow-glow transition-all duration-150 hover:bg-ana-brand-hover hover:shadow-glow-strong disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            className="flex items-center justify-center gap-2 rounded-md bg-ana-brand px-3 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-ana-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? (
               <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -122,7 +122,7 @@ export function ConnectPanel(): JSX.Element {
               <select
                 value={selectedRepo?.full_name ?? ''}
                 onChange={(e) => handleSelectRepo(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-ana-border bg-ana-bg px-3 py-2 pr-8 text-sm text-ana-text outline-none transition-colors duration-150 focus:border-ana-brand-border focus:shadow-focus-brand disabled:opacity-50"
+                className="w-full appearance-none rounded-md border border-ana-border bg-ana-bg px-3 py-2 pr-8 text-sm text-ana-text outline-none transition-colors duration-150 focus:border-ana-brand-border focus:shadow-focus-brand disabled:opacity-50"
               >
                 <option value="">Choose a repo…</option>
                 {repos.map((repo) => (
@@ -151,7 +151,7 @@ export function ConnectPanel(): JSX.Element {
                 disabled={indexing}
                 aria-disabled={indexing}
                 aria-busy={indexing}
-                className="flex items-center justify-center gap-2 rounded-lg border border-ana-border bg-ana-bg/60 px-3 py-2 text-sm font-medium text-ana-text transition-colors duration-150 hover:border-ana-brand-border hover:bg-ana-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center justify-center gap-2 rounded-md border border-ana-border bg-ana-bg px-3 py-2 text-sm font-medium text-ana-text transition-colors duration-150 hover:bg-ana-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg
                   aria-hidden="true"

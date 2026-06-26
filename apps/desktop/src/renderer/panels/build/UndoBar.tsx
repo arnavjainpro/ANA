@@ -49,7 +49,7 @@ export function UndoBar(): JSX.Element {
         className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
           disabled
             ? 'cursor-not-allowed border-ana-border text-ana-text-muted opacity-50'
-            : 'border-ana-brand-border text-ana-brand hover:bg-ana-brand hover:text-white hover:shadow-glow'
+            : 'border-ana-brand-border text-ana-brand hover:bg-ana-brand hover:text-white'
         }`}
       >
         <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

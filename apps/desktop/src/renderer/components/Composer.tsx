@@ -98,7 +98,7 @@ export function Composer(): JSX.Element {
   return (
     <div className="flex flex-col gap-1.5 border-t border-ana-border bg-ana-panel p-3">
       {/* Input + send share a single bordered shell that lights up on focus. */}
-      <div className="group flex items-center gap-2 rounded-xl border border-ana-border bg-ana-bg px-2 py-1.5 transition-all duration-150 focus-within:border-ana-brand-border focus-within:shadow-focus-brand">
+      <div className="group flex items-center gap-2 rounded-lg border border-ana-border bg-ana-bg px-2 py-1.5 transition-colors duration-150 focus-within:border-ana-brand-border focus-within:shadow-focus-brand">
         <input
           type="text"
           value={text}
@@ -128,9 +128,9 @@ export function Composer(): JSX.Element {
           aria-disabled={!canSend}
           aria-busy={busy}
           aria-label="Send message"
-          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-all duration-150 ${
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors duration-150 ${
             canSend
-              ? 'bg-ana-brand text-white shadow-glow hover:bg-ana-brand-hover hover:shadow-glow-strong'
+              ? 'bg-ana-brand text-white hover:bg-ana-brand-hover'
               : 'cursor-not-allowed bg-ana-hover text-ana-text-muted'
           }`}
         >

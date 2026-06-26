@@ -106,7 +106,7 @@ export function AnaConversation(): JSX.Element {
       <button
         type="button"
         onClick={handleStart}
-        className="flex items-center gap-2 rounded-lg bg-ana-brand px-5 py-2.5 text-sm font-medium text-white shadow-glow transition-all duration-150 hover:bg-ana-brand-hover hover:shadow-glow-strong disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 rounded-md bg-ana-brand px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-ana-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg aria-hidden="true" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z" />

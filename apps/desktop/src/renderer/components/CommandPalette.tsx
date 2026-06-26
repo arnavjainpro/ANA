@@ -100,7 +100,7 @@ export function CommandPalette(): JSX.Element {
       onClick={() => setCommandPaletteOpen(false)}
     >
       <div
-        className="w-[28rem] animate-scale-in overflow-hidden rounded-xl border border-ana-border bg-ana-panel shadow-2xl"
+        className="w-[28rem] animate-scale-in overflow-hidden rounded-lg border border-ana-border bg-ana-panel shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}

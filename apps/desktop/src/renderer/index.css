@@ -24,6 +24,15 @@ body {
   color: #fff;
 }
 
+/* Window drag regions for the frameless (integrated) title bar. The top bar is
+   draggable; interactive controls inside it opt back out so clicks work. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* Thin, themed scrollbars (file tree, panels, code lists). A default-chrome
    scrollbar is one of the biggest "unfinished app" tells; this matches the
    surface palette and only shows the thumb on hover-capable surfaces. */

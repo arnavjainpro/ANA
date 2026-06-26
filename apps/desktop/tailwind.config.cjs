@@ -4,18 +4,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Cursor-inspired professional black/white palette, now anchored by the
-        // indigo brand accent shared with the diagram design system below.
+        // Cursor-inspired professional palette: layered cool-neutral grays
+        // (lifted off pure black) with a single restrained blue accent.
         ana: {
-          bg: '#0a0a0a',        // Pure black background
-          panel: '#141415',      // Slightly lighter for panels/sidebars
-          border: '#2a2a2a',     // Subtle borders
-          accent: '#ffffff',     // White — reserved for high-emphasis text
-          text: '#e0e0e0',       // Off-white text
-          'text-muted': '#888888', // Muted gray
-          hover: '#1a1a1a',      // Hover state
-          // Blue brand accent (mirrors accent.primary) — primary CTAs, the
-          // active nav indicator, focus rings, and brand marks.
+          bg: '#1a1a1d',          // Workspace / editor surface (the lighter base)
+          panel: '#141417',       // Bars + sidebar (darker, like an activity bar)
+          border: '#2a2a30',      // Soft, low-contrast hairline borders
+          accent: '#ffffff',      // White — reserved for high-emphasis text
+          text: '#e4e4e7',        // Near-white primary text (cool)
+          'text-muted': '#8a8a93', // Muted cool gray
+          hover: '#232329',       // Subtle hover fill
+          // Blue brand accent (mirrors accent.primary) — used sparingly for the
+          // active nav indicator, primary CTAs, and focus rings. No glow.
           brand: '#3B82F6',
           'brand-hover': '#2563EB',
           'brand-soft': 'rgba(59,130,246,0.12)',
@@ -47,36 +47,30 @@ module.exports = {
       },
       boxShadow: {
         node: '0 0 0 1px var(--tw-shadow-color), 0 4px 24px -4px var(--tw-shadow-color)',
-        panel: '0 0 40px -8px rgba(59,130,246,0.08)',
-        'glow-sm': '0 0 12px rgba(59,130,246,0.3)',
-        // Brand glow for the active nav indicator + primary buttons.
-        glow: '0 0 0 1px rgba(59,130,246,0.4), 0 4px 16px -2px rgba(59,130,246,0.4)',
-        'glow-strong': '0 0 0 1px rgba(59,130,246,0.5), 0 6px 24px -4px rgba(59,130,246,0.55)',
+        panel: 'none',
+        // Subtle, non-glowing elevation. Cursor leans on flat fills + hairline
+        // borders rather than coloured halos, so these are quiet drop shadows.
+        'glow-sm': 'none',
+        glow: 'none',
+        'glow-strong': '0 2px 8px -2px rgba(0,0,0,0.5)',
         // Soft elevation for raised chrome (top bar, composer, cards).
         elevate: '0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.7)',
-        'focus-brand': '0 0 0 1px rgba(59,130,246,0.6), 0 0 0 4px rgba(59,130,246,0.15)',
-      },
-      backgroundImage: {
-        'brand-sheen': 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%)',
+        // Functional focus ring (kept for keyboard accessibility), softened.
+        'focus-brand': '0 0 0 1px rgba(59,130,246,0.55)',
       },
       keyframes: {
         'fade-in-up': {
-          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '0%': { opacity: '0', transform: 'translateY(3px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'scale-in': {
-          '0%': { opacity: '0', transform: 'scale(0.96)' },
+          '0%': { opacity: '0', transform: 'scale(0.98)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
         },
       },
       animation: {
-        'fade-in-up': 'fade-in-up 0.35s cubic-bezier(0.16,1,0.3,1) both',
-        'scale-in': 'scale-in 0.18s cubic-bezier(0.16,1,0.3,1) both',
-        shimmer: 'shimmer 1.6s ease-in-out infinite',
+        'fade-in-up': 'fade-in-up 0.2s ease-out both',
+        'scale-in': 'scale-in 0.14s ease-out both',
       },
       transitionTimingFunction: {
         // Snappy, slightly overshooting ease for entering elements.

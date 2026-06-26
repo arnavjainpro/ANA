@@ -58,7 +58,21 @@ function createWindow(): void {
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    backgroundColor: '#0f1117',
+    backgroundColor: '#131316',
+    // Integrated, frameless title bar (Cursor/VS Code style): the app's own top
+    // bar becomes the window chrome. macOS insets the traffic lights over it;
+    // Windows/Linux overlay the native min/max/close controls so we don't have
+    // to reimplement them. The renderer marks the bar as a drag region.
+    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin'
+      ? { trafficLightPosition: { x: 16, y: 18 } }
+      : {
+          titleBarOverlay: {
+            color: '#141417',
+            symbolColor: '#e0e0e0',
+            height: 48,
+          },
+        }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

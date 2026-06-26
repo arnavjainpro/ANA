@@ -343,7 +343,7 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
   return (
     <div className="flex h-full flex-col bg-surface-raised shadow-panel">
       {/* Frosted-glass toolbar */}
-      <div className="flex items-center justify-between border-b border-surface-border bg-surface-overlay/80 px-4 py-2 backdrop-blur-md">
+      <div className="flex items-center justify-between border-b border-surface-border bg-surface-overlay px-4 py-2">
         <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
           {diagramTypeLabel(code)}
         </h2>

@@ -10,12 +10,12 @@ export function WhiteboardPanel(): JSX.Element {
   if (!whiteboard || whiteboard.stories.length === 0) {
     return (
       <FadeIn className="flex h-full flex-col bg-ana-bg">
-        <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
+        <div className="border-b border-ana-border bg-ana-panel px-6 py-3">
           <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">Plan</h2>
           <p className="mt-0.5 text-xs text-ana-text-muted">User stories &amp; implementation tasks</p>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-ana-border bg-ana-panel">
+          <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ana-border bg-ana-panel">
             <svg aria-hidden="true" className="h-6 w-6 text-ana-text-muted" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m-6-8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
             </svg>
