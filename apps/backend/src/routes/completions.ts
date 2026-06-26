@@ -48,13 +48,8 @@ function chunkLine(
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-/**
- * Fire the full reasoning pipeline for its visual payload and publish it to the
- * desktop panel — WITHOUT blocking speech. Tavus only consumes the spoken
- * stream, so the diagram/whiteboard has to reach the app out-of-band. Runs
- * detached (never awaited) so a slow Sonnet call can't delay the voice reply,
- * and swallows its own errors so a panel failure never touches the stream.
- */
+// Produce the visual panel and publish it out-of-band. Detached so a slow
+// Sonnet call never delays the voice reply; swallows its own errors.
 function publishPanelInBackground(
   repoId: string,
   transcript: string,
@@ -75,18 +70,11 @@ function publishPanelInBackground(
     });
 }
 
-/**
- * OpenAI-compatible endpoint Tavus calls on every conversation turn. Speech is a
- * single streaming Haiku call grounded in RAG chunks: deltas are forwarded to
- * Tavus the instant they arrive, keeping time-to-first-word low and barge-in
- * responsive. The heavier panel pipeline runs detached (see above), so the
- * diagram never sits in the speech path.
- */
+// OpenAI-compatible endpoint Tavus calls on every voice turn: streams a
+// RAG-grounded spoken reply, with the panel/Build work handled out-of-band.
 export async function completionsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatCompletionRequest }>('/v1/chat/completions', async (req, reply) => {
-    // This endpoint is publicly reachable (Tavus calls it over the internet), so
-    // require the shared secret when one is configured. Tavus sends the persona
-    // LLM layer's api_key as a Bearer token. Blank secret = check disabled (dev).
+    // Publicly reachable, so require the shared secret (Bearer) when configured.
     if (env.ana.llmSecret) {
       const auth = req.headers.authorization ?? '';
       if (auth !== `Bearer ${env.ana.llmSecret}`) {
@@ -131,9 +119,8 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
-        // Classify alongside RAG/map retrieval so the extra Haiku call adds no
-        // latency, then branch: a Build request goes to the desktop to apply on
-        // disk; anything else is answered by voice with a panel out of band.
+        // Classify in parallel with retrieval (no added latency), then branch:
+        // Build goes to the desktop to apply on disk; else answer by voice.
         const [intent, chunks, projectMap, architectureSummary] = await Promise.all([
           classifyIntent(transcript, history),
           retrieveChunks(active.repoId, transcript),

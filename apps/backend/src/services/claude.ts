@@ -431,9 +431,7 @@ export async function generateBuildResponse(params: {
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
-    // Code files can be large and only the `updated` body is generated now
-    // (originals are backfilled below), so allow a generous ceiling to avoid
-    // truncating a long file's contents into invalid JSON.
+    // Generous ceiling so a long file's `updated` body isn't truncated into invalid JSON.
     max_tokens: 16000,
     system: [
       {
@@ -447,14 +445,9 @@ export async function generateBuildResponse(params: {
 
   const response = parseJsonObject<BuildResponse>(blockText(message));
 
-  // The model no longer echoes `original` — it's redundant and, for code files,
-  // a frequent failure point: the slightest reproduction drift (whitespace, a
-  // dropped trailing newline) makes the on-disk "original matches current"
-  // check reject the patch, and emitting the whole file twice often overran the
-  // token budget into truncated JSON. We hold the exact contents we fed in, so
-  // backfill each `original` from those, matched by path. A patch for a path we
-  // weren't given (e.g. a brand-new file) keeps whatever the model returned, or
-  // an empty string for a fresh file.
+  // The model doesn't echo `original` (reproduction drift broke the on-disk
+  // match check, and emitting each file twice overran the token budget). Backfill
+  // it from the exact contents we sent; an unmatched path keeps the model's value.
   const originalByPath = new Map(files.map((f) => [f.path, f.contents]));
   for (const patch of response.patches ?? []) {
     patch.original = originalByPath.get(patch.path) ?? patch.original ?? '';
