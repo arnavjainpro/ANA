@@ -74,13 +74,16 @@ Edge rules:
 - Label edges where the relationship type matters: "calls", "writes to", "reads from", "emits", "subscribes".
 - Do not add edges that are architectural assumptions — only what the chunks show.
 
-Visual hierarchy:
-- Use different node shapes to show type:
-  - Rectangle [Label] — default, use for files and modules
-  - Rounded rectangle (Label) — use for external services and APIs
-  - Stadium shape ([Label]) — use for databases and storage
-  - Rhombus {Label} — use for decision points in flow diagrams only
-- Do not use all rectangles. Apply shapes consistently based on the type above.
+Node types — tag EVERY node with its semantic type using Mermaid's class shorthand appended directly to the node declaration, e.g. RendererProcess[Renderer Process]:::entrypoint. Use exactly one of these class names per node, and pair it with the matching shape:
+- :::entrypoint — where control enters the system (the UI/renderer, a CLI, a webhook receiver). Shape: stadium ([Label])
+- :::service — a backend service, API route, or module that performs work. Shape: rectangle [Label]
+- :::datastore — a database, cache, vector store, or any persistent storage. Shape: cylinder [(Label)]
+- :::external — a third-party or hosted API the code calls out to (Tavus, OpenAI, GitHub, Supabase). Shape: rounded rectangle (Label)
+- :::module — a plain file or module with no more specific role. Shape: rectangle [Label]
+- :::decision — a branch or decision point, in flow diagrams only. Shape: rhombus {Label}
+- Every node must carry exactly one of these six type classes. Do not invent other class names.
+- The :::type suffix does NOT change the node ID — the ID is still the identifier before the bracket.
+- Do not emit your own classDef statements; the renderer defines the class styling. Just attach the class.
 
 Fallback:
 - If the provided chunks do not contain enough information to build an accurate diagram, return a single node: graph TD; A[Not enough context — ask Ana to explain a specific file or feature] and explain in spoken what additional context would help.
@@ -97,12 +100,24 @@ highlightedNodes rules:
 - Maximum 6 nodes. If spoken mentions more, pick the 6 most important.
 - This is used to animate a highlight ring on each node as Ana speaks about it.
 
+Example of a well-formed diagram (note the type classes and shapes):
+graph TD
+  Renderer([Renderer Process]):::entrypoint
+  TurnService[Turn Service]:::service
+  Retrieval[RAG Retrieval]:::service
+  Supabase[(Supabase pgvector)]:::datastore
+  Claude(Claude API):::external
+  Renderer -->|sends turn| TurnService
+  TurnService -->|queries| Retrieval
+  Retrieval -->|reads from| Supabase
+  TurnService -->|calls| Claude
+
 Response format — return only this JSON, no preamble:
 {
   "spoken": "<2-3 sentence plain English summary>",
   "panel": "diagram",
   "payload": {
-    "mermaid": "<valid Mermaid syntax, no fences, real node names from the codebase>",
+    "mermaid": "<valid Mermaid syntax, no fences, real node names, every node tagged with a :::type class>",
     "highlightedNodes": ["NodeId1", "NodeId2"]
   }
 }`;

@@ -105,6 +105,16 @@ body {
   }
 }
 
+/* Lucidchart-style dotted graph-paper canvas for the Understand diagram. A
+   tiled radial-gradient of faint dots over a slightly-darker-than-panel base,
+   so nodes read as cards floating on a worksheet rather than shapes in a void. */
+.ana-dot-grid {
+  background-color: #0e0e11;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  background-position: -11px -11px;
+}
+
 /* Subtle hairline divider with a faded gradient — softer than a flat border. */
 .ana-hairline {
   background: linear-gradient(

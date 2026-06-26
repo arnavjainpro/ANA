@@ -14,6 +14,72 @@ import { useConversationStore } from '../store/conversationStore';
 import { bindVoice } from '../lib/voiceEcho';
 
 /**
+ * Listens for Tavus replica speech over the Daily data channel and pushes each
+ * spoken utterance into the store, where the diagram uses it to highlight the
+ * node Ana is currently talking about. Tavus emits these as app-messages whose
+ * `event_type` contains "utterance" with `properties.role === 'replica'`; we
+ * stay permissive about the exact shape so a Tavus event-name change degrades
+ * to "no highlight" rather than a crash.
+ */
+interface TavusMessage {
+  event_type?: string;
+  message_type?: string;
+  properties?: { role?: string; speech?: string; text?: string; transcript?: string };
+  [key: string]: unknown;
+}
+
+// Temporary: log the raw Tavus events so we can confirm the exact shape in a
+// live call. Filter the renderer DevTools console by "[ana-cvi]". Remove once
+// speech-synced highlighting is verified.
+const DEBUG_CVI = true;
+
+function ReplicaTranscriptBridge(): null {
+  const pushUtterance = useConversationStore((s) => s.pushUtterance);
+  useDailyEvent(
+    'app-message',
+    useCallback(
+      (ev: { data?: unknown; fromId?: string }) => {
+        // Tavus may deliver `data` as an object OR a JSON string — normalize.
+        let data: TavusMessage | undefined;
+        const raw = ev?.data;
+        if (typeof raw === 'string') {
+          try {
+            data = JSON.parse(raw) as TavusMessage;
+          } catch {
+            data = undefined;
+          }
+        } else if (raw && typeof raw === 'object') {
+          data = raw as TavusMessage;
+        }
+
+        if (DEBUG_CVI) {
+          console.debug('[ana-cvi] app-message', { fromId: ev?.fromId, raw });
+        }
+        if (!data) return;
+
+        const props = data.properties ?? {};
+        const role = props.role;
+        if (role && role !== 'replica') return; // ignore the user's own speech
+
+        const evType = (data.event_type ?? '').toLowerCase();
+        const text = props.speech ?? props.text ?? props.transcript ?? '';
+        const looksLikeUtterance =
+          evType.includes('utterance') ||
+          evType.includes('speech') ||
+          evType.includes('transcri') ||
+          Boolean(text);
+        if (!looksLikeUtterance || !text.trim()) return;
+
+        if (DEBUG_CVI) console.debug('[ana-cvi] replica utterance →', text);
+        pushUtterance(text);
+      },
+      [pushUtterance],
+    ),
+  );
+  return null;
+}
+
+/**
  * Renders the Tavus call ourselves via the Daily call object (the same engine
  * @tavus/cvi-ui scaffolds) instead of the default prebuilt grid, so we control
  * the layout: Ana (the remote replica) fills the pane and the local camera sits
@@ -185,6 +251,7 @@ export function CviConversation({ conversationUrl }: { conversationUrl: string }
     <DailyProvider url={conversationUrl}>
       <CallJoiner url={conversationUrl} />
       <VoiceEchoBridge />
+      <ReplicaTranscriptBridge />
       <CallStage />
     </DailyProvider>
   );

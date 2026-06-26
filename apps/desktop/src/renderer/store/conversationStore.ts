@@ -17,6 +17,10 @@ interface ConversationState {
   diagram: DiagramPayload | null;
   whiteboard: WhiteboardPayload | null;
   error: string | null;
+  /** Latest spoken utterance from the live Tavus replica, with a monotonic
+   *  sequence so consumers re-run even when the same text repeats. Drives
+   *  real-time node highlighting as Ana speaks. */
+  liveUtterance: { text: string; seq: number } | null;
 
   setConversation: (id: string, url: string) => void;
   /** Clear the active session (used when the user leaves the call). */
@@ -32,6 +36,8 @@ interface ConversationState {
    *  used for voice turns whose conversation history lives in Tavus, not here. */
   applyPanel: (result: TurnResult) => void;
   setError: (error: string | null) => void;
+  /** Record a spoken utterance from the live replica (bumps the sequence). */
+  pushUtterance: (text: string) => void;
 }
 
 export const useConversationStore = create<ConversationState>((set) => ({
@@ -44,10 +50,12 @@ export const useConversationStore = create<ConversationState>((set) => ({
   diagram: null,
   whiteboard: null,
   error: null,
+  liveUtterance: null,
 
   setConversation: (conversationId, conversationUrl) =>
     set({ conversationId, conversationUrl }),
-  clearConversation: () => set({ conversationId: null, conversationUrl: null }),
+  clearConversation: () =>
+    set({ conversationId: null, conversationUrl: null, liveUtterance: null }),
   setProcessing: (processing) => set({ processing }),
   setSessionStarting: (sessionStarting) => set({ sessionStarting }),
   appendUserTurn: (content) =>
@@ -73,6 +81,10 @@ export const useConversationStore = create<ConversationState>((set) => ({
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
     })),
   setError: (error) => set({ error }),
+  pushUtterance: (text) =>
+    set((s) => ({
+      liveUtterance: { text, seq: (s.liveUtterance?.seq ?? 0) + 1 },
+    })),
 }));
 
 /** The last 6 turns, as sent to the backend with every request. */
