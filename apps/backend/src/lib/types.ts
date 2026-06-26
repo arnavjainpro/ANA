@@ -79,6 +79,29 @@ export interface BuildResponse {
   patches: FilePatch[];
 }
 
+/**
+ * One search/replace edit. `oldString` is an exact, unique snippet of the
+ * current file; `newString` replaces it. An empty `oldString` means "create this
+ * file" with `newString` as the full contents.
+ */
+export interface FileEdit {
+  oldString: string;
+  newString: string;
+}
+
+/** All edits the model wants to make to one file. */
+export interface FileEditGroup {
+  path: string;
+  summary: string;
+  edits: FileEdit[];
+}
+
+/** The raw Build response from the model: spoken reply + per-file edits. */
+export interface BuildEditResponse {
+  spoken: string;
+  files: FileEditGroup[];
+}
+
 /** Build turn result returned to the client (adds the undo operation id). */
 export interface BuildResult extends BuildResponse {
   /** UUID for this operation; '' when no patches were applied. */

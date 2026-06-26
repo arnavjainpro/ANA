@@ -3,7 +3,7 @@ import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
 import type {
   AnaResponse,
-  BuildResponse,
+  BuildEditResponse,
   ConversationTurn,
   IntentClassification,
   Mode,
@@ -143,26 +143,33 @@ You will receive:
 - Relevant code chunks retrieved from the rest of the repo
 - Recent conversation history
 
-You must respond with a JSON object in this exact shape:
+You make changes as small, targeted edits — never by rewriting whole files. You must respond with a JSON object in this exact shape:
 {
   "spoken": "<Ana's spoken confirmation — 1–2 sentences, plain speech, no code>",
-  "patches": [
+  "files": [
     {
       "path": "<relative file path from repo root, exactly as given to you>",
-      "updated": "<full updated file contents with your changes applied>",
-      "summary": "<one sentence describing what changed in this file>"
+      "summary": "<one sentence describing what changed in this file>",
+      "edits": [
+        {
+          "oldString": "<exact snippet copied verbatim from the current file>",
+          "newString": "<what that snippet becomes>"
+        }
+      ]
     }
   ]
 }
 
 Rules:
-- Return only the COMPLETE updated file contents in "updated" — the whole file with your change applied, not a diff and not a snippet. Do NOT return the original contents; the system already has them and will supply them.
-- "updated" must be valid, working code and must contain every line of the file. Never use placeholders like "// rest of file unchanged" or "...".
-- Include a patch only for files you actually changed. Use the exact "path" you were given.
-- Maximum 5 files per operation. If the change requires more, return zero patches and explain in spoken.
-- Make a reasonable, minimal change that fulfils the request. Only return zero patches and ask ONE clarifying question when you genuinely cannot tell what to change — never ask just because the request is casual or non-technical.
-- Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks.
-- Do not add dependencies (npm packages) — only modify existing files.
+- For each change, choose the SMALLEST snippet of the current file that needs to change and put it in "oldString", with the replacement in "newString". Do not output whole files.
+- "oldString" must be copied character-for-character from the file contents you were given — exact text, exact indentation — and must appear EXACTLY ONCE in that file. Include a few surrounding lines if needed to make it unique.
+- To insert new code, set "oldString" to an existing nearby line and include that line plus your new lines in "newString".
+- To create a NEW file, use a single edit with "oldString": "" and "newString" set to the full contents of the new file.
+- Edits within a file are applied in order and must not overlap.
+- Include a file entry only for files you actually change. Use the exact "path" you were given.
+- Maximum 5 files per operation. If the change needs more, return an empty "files" array and explain in spoken.
+- Make a reasonable, minimal change that fulfils the request. Only return an empty "files" array and ask ONE clarifying question when you genuinely cannot tell what to change — never ask just because the request is casual or non-technical.
+- Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks. Do not add dependencies — only modify existing files.
 - spoken must be plain speech. No code, no markdown, no file paths.
 - spoken is a brief, friendly, user-facing line. NEVER narrate your own process or reasoning — do not say what you are checking, reviewing, "going through", or "making sure" of, and do not think out loud. Just confirm the change in plain terms, or if you genuinely cannot proceed, ask one short question.
 - Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
@@ -420,14 +427,14 @@ export async function generateArchitectureSummary(params: {
   return blockText(message);
 }
 
-/** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + file patches. */
+/** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + per-file edits. */
 export async function generateBuildResponse(params: {
   utterance: string;
   intent: IntentClassification;
   chunks: RetrievedChunk[];
   history: ConversationTurn[];
   files: { path: string; contents: string }[];
-}): Promise<BuildResponse> {
+}): Promise<BuildEditResponse> {
   const { utterance, intent, chunks, history, files } = params;
 
   const contextParts = [
@@ -442,9 +449,9 @@ export async function generateBuildResponse(params: {
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
-    // High ceiling: every edit re-emits the whole file, so a long file's `updated`
-    // body must fit or the JSON truncates and fails to parse.
-    max_tokens: 32000,
+    // Edits are small snippets (not whole files), so a modest ceiling is plenty
+    // and leaves headroom for creating a sizeable new file.
+    max_tokens: 16000,
     system: [
       {
         type: 'text',
@@ -453,7 +460,7 @@ export async function generateBuildResponse(params: {
       },
     ],
     // Prefill the reply with "{" so the model must continue the JSON envelope —
-    // even a clarifying question comes back as { spoken, patches: [] } instead of
+    // even a clarifying question comes back as { spoken, files: [] } instead of
     // prose we can't parse. The prefill isn't echoed back, so prepend it.
     messages: [
       { role: 'user', content: contextParts.join('\n\n') },
@@ -461,17 +468,7 @@ export async function generateBuildResponse(params: {
     ],
   });
 
-  const response = parseJsonObject<BuildResponse>('{' + blockText(message));
-
-  // The model doesn't echo `original` (reproduction drift broke the on-disk
-  // match check, and emitting each file twice overran the token budget). Backfill
-  // it from the exact contents we sent; an unmatched path keeps the model's value.
-  const originalByPath = new Map(files.map((f) => [f.path, f.contents]));
-  for (const patch of response.patches ?? []) {
-    patch.original = originalByPath.get(patch.path) ?? patch.original ?? '';
-  }
-
-  return response;
+  return parseJsonObject<BuildEditResponse>('{' + blockText(message));
 }
 
 /**

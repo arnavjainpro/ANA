@@ -6,7 +6,7 @@ import {
 } from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getFileContents } from './github.js';
-import { validatePatches, generateOperationId } from './builder.js';
+import { validatePatches, generateOperationId, assemblePatches } from './builder.js';
 import * as history from './history.js';
 import { AppError } from '../lib/errors.js';
 import type {
@@ -167,34 +167,42 @@ export async function processBuildTurn(
       files,
     });
 
-    // Ana intentionally produced no patches (clarifying question or refusal).
-    if (!response.patches || response.patches.length === 0) {
+    // Ana intentionally proposed no edits (clarifying question or refusal).
+    if (!response.files || response.files.length === 0) {
       return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
     }
 
-    const validation = await validatePatches(response.patches);
+    // Turn the per-file edits into full-file patches the rest of the pipeline uses.
+    const { patches } = assemblePatches(files, response.files);
+    if (patches.length === 0) {
+      return {
+        spoken: "I couldn't find the exact spot to change — can you point me to it or say it a different way?",
+        patches: [],
+        operationId: '',
+      };
+    }
+
+    const validation = await validatePatches(patches);
     if (!validation.valid) {
       return { spoken: validation.reason ?? BUILD_FALLBACK, patches: [], operationId: '' };
     }
 
-    const first = response.patches[0];
+    const first = patches[0];
     if (!first) {
       return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
     }
     const summary =
-      response.patches.length === 1
-        ? first.summary
-        : `${first.summary} (${response.patches.length} files)`;
+      patches.length === 1 ? first.summary : `${first.summary} (${patches.length} files)`;
 
     const operationId = generateOperationId();
     history.push(req.sessionId, {
       operationId,
       timestamp: Date.now(),
-      patches: response.patches,
+      patches,
       summary,
     });
 
-    return { spoken: response.spoken, patches: response.patches, operationId };
+    return { spoken: response.spoken, patches, operationId };
   } catch (err) {
     const code = err instanceof AppError ? err.code : undefined;
     console.error('[build] processing failed:', code ?? '', err instanceof Error ? err.message : err);
