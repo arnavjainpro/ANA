@@ -235,7 +235,12 @@ function parseJsonObject<T>(raw: string): T {
   if (first === -1 || last === -1) {
     throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return parseable JSON.');
   }
-  return JSON.parse(text.slice(first, last + 1)) as T;
+  try {
+    return JSON.parse(text.slice(first, last + 1)) as T;
+  } catch {
+    // Reaches here mainly when a long reply was truncated mid-object.
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude returned malformed JSON.');
+  }
 }
 
 function blockText(message: Anthropic.Message): string {
@@ -447,10 +452,16 @@ export async function generateBuildResponse(params: {
         cache_control: { type: 'ephemeral' },
       },
     ],
-    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+    // Prefill the reply with "{" so the model must continue the JSON envelope —
+    // even a clarifying question comes back as { spoken, patches: [] } instead of
+    // prose we can't parse. The prefill isn't echoed back, so prepend it.
+    messages: [
+      { role: 'user', content: contextParts.join('\n\n') },
+      { role: 'assistant', content: '{' },
+    ],
   });
 
-  const response = parseJsonObject<BuildResponse>(blockText(message));
+  const response = parseJsonObject<BuildResponse>('{' + blockText(message));
 
   // The model doesn't echo `original` (reproduction drift broke the on-disk
   // match check, and emitting each file twice overran the token budget). Backfill
