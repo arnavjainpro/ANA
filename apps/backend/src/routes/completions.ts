@@ -14,9 +14,20 @@ import { publishPanel, publishBuildRequest } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
 import type { ConversationTurn, IntentClassification } from '../lib/types.js';
 
-// Spoken while the desktop applies a voice change to disk; the real diff + Undo
-// bar appear in the right panel.
-const BUILD_VOICE_CONFIRMATION = "Okay — I'm making that change now; you'll see it on the right.";
+// Short, non-committal acks spoken while the desktop applies a voice change;
+// the actual outcome is spoken afterwards by the renderer. Varied so Ana doesn't
+// repeat herself.
+const BUILD_ACKS = [
+  'Sure, let me take care of that.',
+  'On it.',
+  'Okay, give me a moment.',
+  'Got it — working on that now.',
+  'Alright, let me do that.',
+] as const;
+
+function pickBuildAck(): string {
+  return BUILD_ACKS[Math.floor(Math.random() * BUILD_ACKS.length)] ?? BUILD_ACKS[0];
+}
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
 interface ChatMessage {
@@ -132,7 +143,7 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
 
         if (intent.mode === 'Build') {
           publishBuildRequest(transcript);
-          reply.raw.write(chunkLine(base, { content: BUILD_VOICE_CONFIRMATION }, null));
+          reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));
         } else {
           publishPanelInBackground(active.repoId, transcript, history, {
             githubToken: active.githubToken,
