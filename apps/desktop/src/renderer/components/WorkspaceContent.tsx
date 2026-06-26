@@ -81,7 +81,11 @@ export function WorkspaceContent(): JSX.Element {
         <WhiteboardPanel />
       ) : (
         // Understand: DiagramPanel renders its own loading skeleton.
-        <DiagramPanel mermaid={diagram?.mermaid ?? ''} isLoading={isPanelLoading} />
+        <DiagramPanel
+          mermaid={diagram?.mermaid ?? ''}
+          isLoading={isPanelLoading}
+          highlightedNodes={diagram?.highlightedNodes}
+        />
       )}
     </div>
   );

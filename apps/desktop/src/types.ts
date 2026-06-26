@@ -26,6 +26,8 @@ export interface ConversationTurn {
 
 export interface DiagramPayload {
   mermaid: string;
+  /** Ordered node IDs to highlight sequentially as Ana speaks about them. */
+  highlightedNodes?: string[];
 }
 
 export interface PlanStory {

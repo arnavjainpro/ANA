@@ -6,52 +6,60 @@ import {
   type ReactZoomPanPinchRef,
 } from 'react-zoom-pan-pinch';
 
-// --- Mermaid initialization (Part 2) -------------------------------------
-// Runs once when this module is first imported — before any diagram renders.
+// --- Mermaid initialization --------------------------------------------------
 mermaid.initialize({
   startOnLoad: false,
   theme: 'base',
   themeVariables: {
     background: '#131316',
-    primaryColor: '#1E2A3A',
+    primaryColor: '#1A2540',
     primaryBorderColor: '#3B6FCC',
     primaryTextColor: '#93C5FD',
-    secondaryColor: '#1E2D27',
+    secondaryColor: '#192B22',
     secondaryBorderColor: '#2D8B5A',
     secondaryTextColor: '#6EE7B7',
-    tertiaryColor: '#2D1E3A',
+    tertiaryColor: '#26193A',
     tertiaryBorderColor: '#7C3AED',
     tertiaryTextColor: '#C4B5FD',
     edgeLabelBackground: '#1A1A1F',
-    clusterBkg: '#131316',
-    clusterBorder: '#2A2A32',
-    lineColor: '#3A3A45',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    clusterBkg: '#111114',
+    clusterBorder: '#2A2A38',
+    lineColor: '#3A3A50',
+    fontFamily: 'Inter Variable, Inter, system-ui, sans-serif',
     fontSize: '13px',
-    nodeBorder: '1px',
+    nodeBorder: '1.5px',
     nodeTextColor: '#E2E8F0',
   },
   flowchart: {
     htmlLabels: true,
-    curve: 'basis',
-    padding: 24,
-    nodeSpacing: 60,
-    rankSpacing: 80,
+    curve: 'monotoneX',
+    padding: 28,
+    nodeSpacing: 64,
+    rankSpacing: 88,
     useMaxWidth: false,
   },
   securityLevel: 'loose',
 });
 
-// These colours are applied to raw SVG attributes during post-processing, where
-// Tailwind utility classes cannot reach. They intentionally mirror the design
-// tokens in tailwind.config.cjs (surface.raised / surface.border / edge.label).
-const SVG_BACKGROUND = '#131316'; // surface.raised
-const SVG_CLUSTER_BORDER = '#2A2A32'; // surface.border
-const SVG_EDGE_LABEL = '#6B7280'; // edge.label
+// Design tokens mirrored from tailwind.config.cjs
+const SVG_BACKGROUND = '#131316';
+const SVG_CLUSTER_BG = '#111114';
+const SVG_CLUSTER_BORDER = '#2A2A38';
+const SVG_EDGE_LABEL = '#6B7280';
+const SVG_EDGE_COLOR = '#3A3A50';
+const HIGHLIGHT_COLOR = '#3B82F6';
+const HIGHLIGHT_GLOW_COLOR = 'rgba(59,130,246,0.4)';
+
+// Node type → gradient stops (top, bottom) derived from the mermaid theme palette
+const NODE_GRADIENTS: Array<{ id: string; top: string; bottom: string }> = [
+  { id: 'grad-primary', top: '#223260', bottom: '#1A2540' },
+  { id: 'grad-secondary', top: '#1F3A2D', bottom: '#192B22' },
+  { id: 'grad-tertiary', top: '#31234A', bottom: '#26193A' },
+  { id: 'grad-external', top: '#3B2E18', bottom: '#2D2414' },
+];
 
 let renderSeq = 0;
 
-/** Whether the user has asked the OS to minimise non-essential motion. */
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -62,11 +70,10 @@ function prefersReducedMotion(): boolean {
 interface DiagramPanelProps {
   mermaid: string;
   isLoading: boolean;
+  highlightedNodes?: string[];
 }
 
-// --- lucide-style inline icons -------------------------------------------
-// lucide-react is not a dependency; these replicate the needed lucide glyphs
-// (24×24, stroke-based) so the toolbar matches the design without adding a package.
+// --- Icons -------------------------------------------------------------------
 function Icon({ children }: { children: ReactNode }): JSX.Element {
   return (
     <svg
@@ -141,7 +148,6 @@ const GitBranchIcon = (): JSX.Element => (
   </svg>
 );
 
-/** Detect the diagram type from the leading Mermaid directive. */
 function diagramTypeLabel(code: string): string {
   const head = code.trimStart();
   if (head.startsWith('flowchart LR') || head.startsWith('graph LR')) return 'Data Flow';
@@ -150,9 +156,87 @@ function diagramTypeLabel(code: string): string {
 }
 
 /**
- * Post-process Mermaid's raw SVG into the Ana design language: rounded nodes
- * with a colour-matched glow, softened edges, styled edge labels, and themed
- * subgraph clusters. Returns the serialized SVG string.
+ * Inject SVG defs (gradients + filters) for enterprise-grade node styling and
+ * the highlight glow used when Ana discusses a specific node.
+ */
+function buildDefs(doc: Document, svgNs: string, defs: Element): void {
+  // Gradient fills for node backgrounds
+  for (const { id, top, bottom } of NODE_GRADIENTS) {
+    if (doc.getElementById(id)) continue;
+    const grad = doc.createElementNS(svgNs, 'linearGradient');
+    grad.setAttribute('id', id);
+    grad.setAttribute('x1', '0%');
+    grad.setAttribute('y1', '0%');
+    grad.setAttribute('x2', '0%');
+    grad.setAttribute('y2', '100%');
+    const s1 = doc.createElementNS(svgNs, 'stop');
+    s1.setAttribute('offset', '0%');
+    s1.setAttribute('stop-color', top);
+    const s2 = doc.createElementNS(svgNs, 'stop');
+    s2.setAttribute('offset', '100%');
+    s2.setAttribute('stop-color', bottom);
+    grad.appendChild(s1);
+    grad.appendChild(s2);
+    defs.appendChild(grad);
+  }
+
+  // Ambient node glow (dim, applied to all nodes)
+  if (!doc.getElementById('ana-node-glow')) {
+    const f = doc.createElementNS(svgNs, 'filter');
+    f.setAttribute('id', 'ana-node-glow');
+    f.setAttribute('x', '-30%');
+    f.setAttribute('y', '-30%');
+    f.setAttribute('width', '160%');
+    f.setAttribute('height', '160%');
+    const shadow = doc.createElementNS(svgNs, 'feDropShadow');
+    shadow.setAttribute('dx', '0');
+    shadow.setAttribute('dy', '2');
+    shadow.setAttribute('stdDeviation', '3');
+    shadow.setAttribute('flood-color', 'currentColor');
+    shadow.setAttribute('flood-opacity', '0.18');
+    f.appendChild(shadow);
+    defs.appendChild(f);
+  }
+
+  // Active-highlight glow (bright blue, applied to the focused node)
+  if (!doc.getElementById('ana-highlight-glow')) {
+    const f = doc.createElementNS(svgNs, 'filter');
+    f.setAttribute('id', 'ana-highlight-glow');
+    f.setAttribute('x', '-40%');
+    f.setAttribute('y', '-40%');
+    f.setAttribute('width', '180%');
+    f.setAttribute('height', '180%');
+    const blur = doc.createElementNS(svgNs, 'feGaussianBlur');
+    blur.setAttribute('in', 'SourceGraphic');
+    blur.setAttribute('stdDeviation', '5');
+    blur.setAttribute('result', 'blur');
+    const flood = doc.createElementNS(svgNs, 'feFlood');
+    flood.setAttribute('flood-color', HIGHLIGHT_GLOW_COLOR);
+    flood.setAttribute('result', 'color');
+    const composite = doc.createElementNS(svgNs, 'feComposite');
+    composite.setAttribute('in', 'color');
+    composite.setAttribute('in2', 'blur');
+    composite.setAttribute('operator', 'in');
+    composite.setAttribute('result', 'glow');
+    const merge = doc.createElementNS(svgNs, 'feMerge');
+    const mg1 = doc.createElementNS(svgNs, 'feMergeNode');
+    mg1.setAttribute('in', 'glow');
+    const mg2 = doc.createElementNS(svgNs, 'feMergeNode');
+    mg2.setAttribute('in', 'SourceGraphic');
+    merge.appendChild(mg1);
+    merge.appendChild(mg2);
+    f.appendChild(blur);
+    f.appendChild(flood);
+    f.appendChild(composite);
+    f.appendChild(merge);
+    defs.appendChild(f);
+  }
+}
+
+/**
+ * Post-process Mermaid's raw SVG into enterprise-grade Ana design language:
+ * gradient node fills, glow filters, rounded corners, styled edges, subgraph
+ * badges, and data-node-id stamps for the highlight system.
  */
 function postProcessSvg(svgString: string): string {
   const svgNs = 'http://www.w3.org/2000/svg';
@@ -160,11 +244,10 @@ function postProcessSvg(svgString: string): string {
   const svg = doc.querySelector('svg');
   if (!svg) return svgString;
 
-  // 2. Make the SVG fill its container.
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', '100%');
 
-  // 3. Drop the opaque background rect Mermaid injects, so the panel shows through.
+  // Remove Mermaid's opaque background rect
   const firstRect = svg.querySelector('rect');
   if (firstRect) {
     const fill = (firstRect.getAttribute('fill') ?? '').toLowerCase();
@@ -173,87 +256,109 @@ function postProcessSvg(svgString: string): string {
     }
   }
 
-  // 4. Inject a drop-shadow glow filter into <defs> and apply it to every node.
+  // Inject defs (gradients + filters)
   let defs = svg.querySelector('defs');
   if (!defs) {
     defs = doc.createElementNS(svgNs, 'defs');
     svg.insertBefore(defs, svg.firstChild);
   }
-  const filterId = 'ana-node-glow';
-  if (!doc.getElementById(filterId)) {
-    const filter = doc.createElementNS(svgNs, 'filter');
-    filter.setAttribute('id', filterId);
-    filter.setAttribute('x', '-50%');
-    filter.setAttribute('y', '-50%');
-    filter.setAttribute('width', '200%');
-    filter.setAttribute('height', '200%');
-    const shadow = doc.createElementNS(svgNs, 'feDropShadow');
-    shadow.setAttribute('dx', '0');
-    shadow.setAttribute('dy', '0');
-    shadow.setAttribute('stdDeviation', '4'); // ≈ drop-shadow blur 8px
-    shadow.setAttribute('flood-color', 'currentColor');
-    shadow.setAttribute('flood-opacity', '0.2');
-    filter.appendChild(shadow);
-    defs.appendChild(filter);
-  }
+  buildDefs(doc, svgNs, defs);
 
-  svg.querySelectorAll('.node rect, .node polygon').forEach((el) => {
-    el.setAttribute('rx', '8');
-    el.setAttribute('ry', '8');
-    // currentColor on the glow resolves to the node's own stroke colour.
-    const stroke = el.getAttribute('stroke');
-    if (stroke) (el as SVGElement).style.color = stroke;
-    (el as SVGElement).style.filter = `url(#${filterId})`;
+  // Style nodes — rounded corners, gradient fill, glow, data-node-id stamp
+  svg.querySelectorAll<SVGGElement>('.node').forEach((nodeEl) => {
+    // Extract the mermaid node ID from the element id (flowchart-{nodeId}-{seq})
+    const rawId = nodeEl.getAttribute('id') ?? '';
+    const match = rawId.match(/^(?:flowchart-)?(.+?)(?:-\d+)?$/);
+    const nodeId = match?.[1] ?? rawId;
+    if (nodeId) nodeEl.setAttribute('data-node-id', nodeId);
+
+    const shape = nodeEl.querySelector<SVGElement>('rect, polygon');
+    if (!shape) return;
+
+    shape.setAttribute('rx', '10');
+    shape.setAttribute('ry', '10');
+
+    // Apply gradient fill based on the node's current fill color
+    const fill = (shape.getAttribute('fill') ?? '').toLowerCase();
+    let gradId = 'grad-primary';
+    if (fill.includes('2d') && fill.includes('27')) gradId = 'grad-secondary';
+    else if (fill.includes('2d') && fill.includes('3a')) gradId = 'grad-tertiary';
+    else if (fill.includes('2d') && fill.includes('18')) gradId = 'grad-external';
+    shape.setAttribute('fill', `url(#${gradId})`);
+
+    // Thicker, colored stroke
+    const stroke = shape.getAttribute('stroke');
+    if (stroke) {
+      (shape as SVGElement).style.color = stroke;
+      shape.setAttribute('stroke-width', '1.5');
+    }
+
+    (shape as SVGElement).style.filter = 'url(#ana-node-glow)';
   });
 
-  // 5. Soften edges.
-  svg.querySelectorAll('.edgePath path').forEach((el) => {
+  // Enterprise edge styling — smooth, slightly opaque arrows
+  svg.querySelectorAll<SVGElement>('.edgePath path').forEach((el) => {
+    el.setAttribute('stroke', SVG_EDGE_COLOR);
     el.setAttribute('stroke-width', '1.5');
-    el.setAttribute('stroke-opacity', '0.6');
+    el.setAttribute('stroke-opacity', '0.7');
   });
 
-  // 6. Style edge labels (works for both SVG <text> and htmlLabels markup).
-  svg.querySelectorAll('.edgeLabel').forEach((el) => {
-    const node = el as SVGElement & HTMLElement;
-    node.style.fontSize = '11px';
-    node.style.fill = SVG_EDGE_LABEL;
-    node.style.color = SVG_EDGE_LABEL;
+  // Arrowhead markers — match edge color
+  svg.querySelectorAll<SVGElement>('marker path, marker polygon').forEach((el) => {
+    el.setAttribute('fill', SVG_EDGE_COLOR);
+    el.setAttribute('stroke', SVG_EDGE_COLOR);
   });
 
-  // Part 4 — subgraph (cluster) styling.
-  svg.querySelectorAll('.cluster rect').forEach((el) => {
-    el.setAttribute('fill', SVG_BACKGROUND);
+  // Edge labels
+  svg.querySelectorAll<SVGElement & HTMLElement>('.edgeLabel').forEach((el) => {
+    el.style.fontSize = '11px';
+    el.style.fill = SVG_EDGE_LABEL;
+    el.style.color = SVG_EDGE_LABEL;
+    el.style.letterSpacing = '0.01em';
+  });
+
+  // Subgraph (cluster) styling — darker backdrop, uppercase badge label
+  svg.querySelectorAll<SVGElement>('.cluster rect').forEach((el) => {
+    el.setAttribute('fill', SVG_CLUSTER_BG);
     el.setAttribute('stroke', SVG_CLUSTER_BORDER);
     el.setAttribute('stroke-width', '1');
-    el.setAttribute('rx', '12');
-    el.setAttribute('ry', '12');
+    el.setAttribute('stroke-dasharray', '4,3');
+    el.setAttribute('rx', '14');
+    el.setAttribute('ry', '14');
   });
-  svg.querySelectorAll('.cluster .label, .cluster text').forEach((el) => {
-    const node = el as SVGElement & HTMLElement;
-    node.style.fill = SVG_EDGE_LABEL;
-    node.style.color = SVG_EDGE_LABEL;
-    node.style.fontSize = '11px';
-    node.style.fontWeight = '500';
-    node.style.letterSpacing = '0.05em';
-    node.style.textTransform = 'uppercase';
+  svg.querySelectorAll<SVGElement & HTMLElement>('.cluster .label, .cluster text').forEach((el) => {
+    el.style.fill = '#4B5563';
+    el.style.color = '#4B5563';
+    el.style.fontSize = '10px';
+    el.style.fontWeight = '600';
+    el.style.letterSpacing = '0.08em';
+    el.style.textTransform = 'uppercase';
+  });
+
+  // Node label text — sharper rendering
+  svg.querySelectorAll<SVGElement & HTMLElement>('.node .label, .node text, .nodeLabel').forEach((el) => {
+    el.style.fontFamily = 'Inter Variable, Inter, system-ui, sans-serif';
+    el.style.fontWeight = '500';
+    el.style.letterSpacing = '-0.01em';
   });
 
   return new XMLSerializer().serializeToString(svg);
 }
 
-/** Renders the Understand-mode Mermaid diagram with pan/zoom and design polish. */
-export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): JSX.Element {
+/** Renders the Understand-mode Mermaid diagram with pan/zoom, enterprise styling, and node highlighting. */
+export function DiagramPanel({ mermaid: code, isLoading, highlightedNodes }: DiagramPanelProps): JSX.Element {
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
+  const svgContainerRef = useRef<HTMLDivElement>(null);
   const prevCode = useRef<string | null>(null);
   const [svg, setSvg] = useState('');
   const [hasError, setHasError] = useState(false);
   const [visible, setVisible] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [activeNodeIdx, setActiveNodeIdx] = useState(0);
 
   const trimmed = code.trim();
 
-  // Render + post-process the diagram whenever the Mermaid string changes,
-  // cross-fading the canvas (unless the user prefers reduced motion).
+  // Render + post-process the diagram whenever the Mermaid string changes
   useEffect(() => {
     let cancelled = false;
     const previous = prevCode.current;
@@ -273,9 +378,9 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
         if (cancelled) return;
         setSvg(postProcessSvg(raw));
         setHasError(false);
+        setActiveNodeIdx(0);
       } catch (err) {
         if (cancelled) return;
-        // Log the offending source so an invalid diagram is debuggable.
         console.error('[DiagramPanel] invalid Mermaid diagram:', code, err);
         setSvg('');
         setHasError(true);
@@ -287,12 +392,9 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
       void swap().then(() => {
         if (!cancelled) setVisible(true);
       });
-      return () => {
-        cancelled = true;
-      };
+      return () => { cancelled = true; };
     }
 
-    // Fade out (150ms), swap content, fade back in (200ms).
     setVisible(false);
     const timer = window.setTimeout(() => {
       void swap().then(() => {
@@ -305,7 +407,7 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
     };
   }, [code, trimmed]);
 
-  // Re-center the freshly rendered diagram once it lands in the DOM.
+  // Re-center whenever a new diagram lands
   useEffect(() => {
     if (!svg) return undefined;
     const id = requestAnimationFrame(() => {
@@ -313,6 +415,53 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
     });
     return () => cancelAnimationFrame(id);
   }, [svg]);
+
+  // Cycle through highlighted nodes every 2.5 s
+  useEffect(() => {
+    if (!highlightedNodes?.length) return undefined;
+    setActiveNodeIdx(0);
+    const interval = setInterval(() => {
+      setActiveNodeIdx((i) => (i + 1) % (highlightedNodes?.length ?? 1));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [highlightedNodes]);
+
+  // Apply/remove highlight ring directly on the SVG DOM whenever the active node changes
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container) return;
+
+    // Clear previous highlight
+    container.querySelectorAll<SVGElement>('[data-node-id]').forEach((nodeEl) => {
+      const shape = nodeEl.querySelector<SVGElement>('rect, polygon');
+      if (!shape) return;
+      const orig = shape.getAttribute('data-orig-stroke');
+      const origWidth = shape.getAttribute('data-orig-stroke-width');
+      if (orig !== null) shape.setAttribute('stroke', orig);
+      if (origWidth !== null) shape.setAttribute('stroke-width', origWidth);
+      shape.style.filter = 'url(#ana-node-glow)';
+    });
+
+    if (!highlightedNodes?.length) return;
+    const nodeId = highlightedNodes[activeNodeIdx % highlightedNodes.length];
+    if (!nodeId) return;
+
+    const nodeEl = container.querySelector<SVGElement>(`[data-node-id="${CSS.escape(nodeId)}"]`);
+    if (!nodeEl) return;
+
+    const shape = nodeEl.querySelector<SVGElement>('rect, polygon');
+    if (!shape) return;
+
+    // Persist originals so we can restore them
+    if (!shape.hasAttribute('data-orig-stroke')) {
+      shape.setAttribute('data-orig-stroke', shape.getAttribute('stroke') ?? '');
+      shape.setAttribute('data-orig-stroke-width', shape.getAttribute('stroke-width') ?? '1.5');
+    }
+
+    shape.setAttribute('stroke', HIGHLIGHT_COLOR);
+    shape.setAttribute('stroke-width', '2.5');
+    shape.style.filter = 'url(#ana-highlight-glow)';
+  }, [activeNodeIdx, highlightedNodes, svg]);
 
   const zoomByStep = (delta: number): void => {
     const api = transformRef.current;
@@ -323,9 +472,6 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
   };
 
   const fitToPanel = (): void => {
-    // Reset to 1:1 and re-center. `resetTransform` alone snaps the content to
-    // the top-left corner (no re-center), which looked broken; `centerView`
-    // restores scale 1 and centers the diagram in the panel.
     transformRef.current?.centerView(1, 200);
   };
 
@@ -342,12 +488,22 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
 
   return (
     <div className="flex h-full flex-col bg-surface-raised shadow-panel">
-      {/* Frosted-glass toolbar */}
+      {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-surface-border bg-surface-overlay px-4 py-2">
-        <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
-          {diagramTypeLabel(code)}
-        </h2>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2.5">
+          <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
+            {diagramTypeLabel(code)}
+          </h2>
+          {highlightedNodes && highlightedNodes.length > 0 && svg && (
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary" />
+              <span className="text-xs text-edge-label">
+                {highlightedNodes[activeNodeIdx % highlightedNodes.length]}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
           <button
             type="button"
             aria-label="Zoom in"
@@ -412,6 +568,7 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
           >
             <TransformComponent wrapperClass="!h-full !w-full" contentClass="!h-full !w-full">
               <div
+                ref={svgContainerRef}
                 role="img"
                 aria-label="Architecture diagram"
                 className={fadeClass}
@@ -425,24 +582,20 @@ export function DiagramPanel({ mermaid: code, isLoading }: DiagramPanelProps): J
   );
 }
 
-/** Skeleton that echoes a diagram's shape (nodes + connectors) while loading. */
 function DiagramSkeleton(): JSX.Element {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center">
-      {/* Row 1 — single node */}
-      <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
-      <div className="h-6 w-px bg-surface-border" />
-      {/* Row 2 — two nodes */}
-      <div className="flex gap-12">
-        <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
-        <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
+    <div className="flex h-full w-full flex-col items-center justify-center gap-0">
+      <div className="h-[44px] w-[140px] animate-pulse rounded-xl bg-surface-overlay" />
+      <div className="h-8 w-px bg-surface-border" />
+      <div className="flex gap-14">
+        <div className="h-[44px] w-[130px] animate-pulse rounded-xl bg-surface-overlay" />
+        <div className="h-[44px] w-[130px] animate-pulse rounded-xl bg-surface-overlay" />
       </div>
-      <div className="h-6 w-px bg-surface-border" />
-      {/* Row 3 — three nodes */}
+      <div className="h-8 w-px bg-surface-border" />
       <div className="flex gap-8">
-        <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
-        <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
-        <div className="h-[40px] w-[120px] animate-pulse rounded-lg bg-surface-overlay" />
+        <div className="h-[44px] w-[110px] animate-pulse rounded-xl bg-surface-overlay opacity-70" />
+        <div className="h-[44px] w-[110px] animate-pulse rounded-xl bg-surface-overlay" />
+        <div className="h-[44px] w-[110px] animate-pulse rounded-xl bg-surface-overlay opacity-70" />
       </div>
     </div>
   );

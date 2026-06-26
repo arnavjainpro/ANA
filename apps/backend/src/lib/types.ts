@@ -25,6 +25,8 @@ export interface ConversationTurn {
 /** Mermaid diagram payload for Understand mode. */
 export interface DiagramPayload {
   mermaid: string;
+  /** Ordered node IDs to highlight sequentially as Ana speaks about them. */
+  highlightedNodes?: string[];
 }
 
 /** A user story in a Plan whiteboard. */
