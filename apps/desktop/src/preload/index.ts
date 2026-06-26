@@ -2,9 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AnaApi,
   BuildTurnRequest,
+  BusEvent,
   IndexProgress,
   TurnRequest,
-  TurnResult,
 } from '../types.js';
 
 // Expose ONLY named functions — never ipcRenderer itself.
@@ -31,8 +31,8 @@ const api: AnaApi = {
     syncRepo: (args: { repoId: string; repoFullName?: string }) =>
       ipcRenderer.invoke('conversation:syncRepo', args),
     resetContext: () => ipcRenderer.invoke('conversation:resetContext'),
-    onPanelUpdate: (cb: (evt: TurnResult) => void) => {
-      const listener = (_e: unknown, evt: TurnResult): void => cb(evt);
+    onPanelUpdate: (cb: (evt: BusEvent) => void) => {
+      const listener = (_e: unknown, evt: BusEvent): void => cb(evt);
       ipcRenderer.on('conversation:panel', listener);
       return () => ipcRenderer.removeListener('conversation:panel', listener);
     },

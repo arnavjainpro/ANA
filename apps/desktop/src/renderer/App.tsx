@@ -10,9 +10,42 @@ import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
-import { useConversationStore } from './store/conversationStore';
+import { useConversationStore, recentHistory } from './store/conversationStore';
 import { useBuildStore } from './store/buildStore';
 import { isIpcError } from './lib/ipc';
+import type { FilePatch } from '../types';
+
+/** Apply a spoken change request to disk via the existing Build pipeline. */
+async function handleVoiceBuild(transcript: string): Promise<void> {
+  const repo = useRepoStore.getState();
+  const convo = useConversationStore.getState();
+  const build = useBuildStore.getState();
+  const fullName = repo.selectedRepo?.full_name;
+
+  useUiStore.getState().setActiveMode('Build');
+  // Resolve a stored folder if Build mode was never opened this session.
+  if (!build.repoPath && fullName) await build.ensureRepoPath(fullName);
+
+  const history = recentHistory(convo.history);
+  convo.appendUserTurn(transcript);
+  const res = await useBuildStore.getState().runTurn({
+    transcript,
+    history,
+    repoId: repo.repoId ?? undefined,
+    repoFullName: fullName,
+  });
+  if (!res) return; // No local folder chosen — buildStore set the guiding error.
+  if (res.patches.length > 0) {
+    for (const patch of res.patches) convo.pushAssistant(voiceNarration(patch));
+  } else if (res.spoken) {
+    convo.pushAssistant(res.spoken);
+  }
+}
+
+function voiceNarration(patch: FilePatch): string {
+  const name = patch.path.split('/').pop() ?? patch.path;
+  return `Updated ${name} — ${patch.summary}`;
+}
 
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
@@ -43,10 +76,14 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // Voice (Tavus) turns render their diagram/whiteboard via a pushed event,
-  // since they never pass through the renderer's text-turn path.
+  // Voice (Tavus) turns reach the renderer via pushed events: a 'panel' renders
+  // a diagram/board; a 'build-request' applies a change through the Build pipeline.
   useEffect(() => {
     const unsubscribe = window.ana.conversation.onPanelUpdate((evt) => {
+      if (evt.type === 'build-request') {
+        void handleVoiceBuild(evt.transcript);
+        return;
+      }
       setActiveMode(evt.mode);
       applyPanel(evt);
       setPanelLoading(false);

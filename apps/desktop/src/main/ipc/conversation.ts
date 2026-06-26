@@ -1,7 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { backendJson, backendUrl } from '../lib/backend.js';
 import { loadGitHubToken } from '../lib/tokenStore.js';
-import type { IpcResult, TurnRequest, TurnResult } from '../../types.js';
+import type { BusEvent, IpcResult, TurnRequest, TurnResult } from '../../types.js';
 
 /**
  * Hold a long-lived connection to the backend's panel-event stream and forward
@@ -32,7 +32,7 @@ export function startPanelStream(window: BrowserWindow): void {
           for (const line of lines) {
             if (!line.trim()) continue;
             try {
-              const evt = JSON.parse(line) as TurnResult;
+              const evt = JSON.parse(line) as BusEvent;
               if (!window.isDestroyed()) window.webContents.send('conversation:panel', evt);
             } catch {
               // ignore malformed line

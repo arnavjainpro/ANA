@@ -60,6 +60,20 @@ export interface TurnResult {
   payload: DiagramPayload | WhiteboardPayload;
 }
 
+/** A diagram/board pushed from a voice turn. */
+export interface PanelEvent extends TurnResult {
+  type: 'panel';
+}
+
+/** A spoken change request from a voice turn, applied via the Build pipeline. */
+export interface BuildRequestEvent {
+  type: 'build-request';
+  transcript: string;
+}
+
+/** Events streamed to the desktop from voice (Tavus) turns. */
+export type BusEvent = PanelEvent | BuildRequestEvent;
+
 // --- Build mode --------------------------------------------------------------
 
 /** A full-file change. `original`/`updated` are complete contents, never diffs. */
@@ -150,10 +164,10 @@ export interface AnaApi {
     /** Forget the backend's active repo (fresh launch / repo switch). */
     resetContext: () => Promise<IpcResult<{ ok: true }>>;
     /**
-     * Subscribe to right-panel updates pushed from voice (Tavus) turns, which
-     * bypass the renderer. Returns an unsubscribe function.
+     * Subscribe to events pushed from voice (Tavus) turns (panel updates or
+     * Build requests), which bypass the renderer. Returns an unsubscribe function.
      */
-    onPanelUpdate: (cb: (evt: TurnResult) => void) => () => void;
+    onPanelUpdate: (cb: (evt: BusEvent) => void) => () => void;
   };
   build: {
     /** Open a folder picker, validate against the repo, persist, and return the path. */
