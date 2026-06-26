@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  classifyIntent,
   generateNoRepoReply,
   streamSpokenReply,
   SPOKEN_FALLBACK,
@@ -9,9 +10,13 @@ import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
 import { getArchitectureSummary } from '../services/architectureSummary.js';
 import { getActiveRepo } from '../services/activeRepo.js';
-import { publishPanel } from '../services/panelBus.js';
+import { publishPanel, publishBuildRequest } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
-import type { ConversationTurn } from '../lib/types.js';
+import type { ConversationTurn, IntentClassification } from '../lib/types.js';
+
+// Spoken while the desktop applies a voice change to disk; the real diff + Undo
+// bar appear in the right panel.
+const BUILD_VOICE_CONFIRMATION = "Okay — I'm making that change now; you'll see it on the right.";
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
 interface ChatMessage {
@@ -54,7 +59,7 @@ function publishPanelInBackground(
   repoId: string,
   transcript: string,
   history: ConversationTurn[],
-  options: { githubToken?: string; repoFullName?: string },
+  options: { githubToken?: string; repoFullName?: string; precomputedIntent?: IntentClassification },
 ): void {
   void processTurn({ repoId, utterance: transcript, history }, options)
     .then((result) => {
@@ -126,28 +131,36 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
-        // Retrieve grounding chunks and the whole-project map in parallel (the
-        // map is cached after the first turn), then stream the spoken reply token
-        // by token. The visual panel is produced separately and out of band.
-        const [chunks, projectMap, architectureSummary] = await Promise.all([
+        // Classify alongside RAG/map retrieval so the extra Haiku call adds no
+        // latency, then branch: a Build request goes to the desktop to apply on
+        // disk; anything else is answered by voice with a panel out of band.
+        const [intent, chunks, projectMap, architectureSummary] = await Promise.all([
+          classifyIntent(transcript, history),
           retrieveChunks(active.repoId, transcript),
           active.githubToken && active.repoFullName
             ? getProjectMap(active.repoFullName, active.githubToken)
             : Promise.resolve(undefined),
           getArchitectureSummary(active.repoId),
         ]);
-        publishPanelInBackground(active.repoId, transcript, history, {
-          githubToken: active.githubToken,
-          repoFullName: active.repoFullName,
-        });
-        for await (const delta of streamSpokenReply({
-          utterance: transcript,
-          history,
-          chunks,
-          projectMap,
-          architectureSummary,
-        })) {
-          reply.raw.write(chunkLine(base, { content: delta }, null));
+
+        if (intent.mode === 'Build') {
+          publishBuildRequest(transcript);
+          reply.raw.write(chunkLine(base, { content: BUILD_VOICE_CONFIRMATION }, null));
+        } else {
+          publishPanelInBackground(active.repoId, transcript, history, {
+            githubToken: active.githubToken,
+            repoFullName: active.repoFullName,
+            precomputedIntent: intent,
+          });
+          for await (const delta of streamSpokenReply({
+            utterance: transcript,
+            history,
+            chunks,
+            projectMap,
+            architectureSummary,
+          })) {
+            reply.raw.write(chunkLine(base, { content: delta }, null));
+          }
         }
       } else {
         // No repo connected/indexed yet — guide the user through connecting one

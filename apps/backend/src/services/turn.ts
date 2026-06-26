@@ -13,6 +13,7 @@ import type {
   BuildPlan,
   BuildResult,
   BuildTurnRequest,
+  IntentClassification,
   Mode,
   RetrievedChunk,
   TurnRequest,
@@ -35,12 +36,14 @@ const BUILD_FALLBACK = "I couldn't make that change just now — can you try rep
  */
 export async function processTurn(
   req: TurnRequest,
-  options: { githubToken?: string; repoFullName?: string },
+  options: { githubToken?: string; repoFullName?: string; precomputedIntent?: IntentClassification },
 ): Promise<TurnResult> {
   const history = req.history ?? [];
 
   try {
-    const intent = await classifyIntent(req.utterance, history);
+    // Reuse the caller's classification when given (voice turns classify up
+    // front to branch Build vs speak) so we don't pay for a second Haiku call.
+    const intent = options.precomputedIntent ?? (await classifyIntent(req.utterance, history));
 
     // Resolve the effective mode: a manual override from the UI wins, otherwise
     // use the classifier. Only Understand/Plan are supported this build.
