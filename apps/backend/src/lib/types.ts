@@ -10,6 +10,10 @@ export interface IntentClassification {
   mode: Mode;
   intent: string;
   target: string | null;
+  /** True when the user is asking to undo/revert the last change. */
+  undo?: boolean;
+  /** True when the user is asking to redo/re-apply the change they just undid. */
+  redo?: boolean;
 }
 
 /** A single turn of conversation, oldest first. */
@@ -75,6 +79,29 @@ export interface FilePatch {
 export interface BuildResponse {
   spoken: string;
   patches: FilePatch[];
+}
+
+/**
+ * One search/replace edit. `oldString` is an exact, unique snippet of the
+ * current file; `newString` replaces it. An empty `oldString` means "create this
+ * file" with `newString` as the full contents.
+ */
+export interface FileEdit {
+  oldString: string;
+  newString: string;
+}
+
+/** All edits the model wants to make to one file. */
+export interface FileEditGroup {
+  path: string;
+  summary: string;
+  edits: FileEdit[];
+}
+
+/** The raw Build response from the model: spoken reply + per-file edits. */
+export interface BuildEditResponse {
+  spoken: string;
+  files: FileEditGroup[];
 }
 
 /** Build turn result returned to the client (adds the undo operation id). */

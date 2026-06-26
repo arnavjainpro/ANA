@@ -60,6 +60,36 @@ export interface TurnResult {
   payload: DiagramPayload | WhiteboardPayload;
 }
 
+/** A diagram/board pushed from a voice turn. */
+export interface PanelEvent extends TurnResult {
+  type: 'panel';
+}
+
+/** A spoken change request from a voice turn, applied via the Build pipeline. */
+export interface BuildRequestEvent {
+  type: 'build-request';
+  transcript: string;
+  /** Prior conversation (from Tavus) so Build has the planning context. */
+  history: ConversationTurn[];
+}
+
+/** A spoken request to undo the last change applied this session. */
+export interface UndoRequestEvent {
+  type: 'undo-request';
+}
+
+/** A spoken request to redo the most recently undone change. */
+export interface RedoRequestEvent {
+  type: 'redo-request';
+}
+
+/** Events streamed to the desktop from voice (Tavus) turns. */
+export type BusEvent =
+  | PanelEvent
+  | BuildRequestEvent
+  | UndoRequestEvent
+  | RedoRequestEvent;
+
 // --- Build mode --------------------------------------------------------------
 
 /** A full-file change. `original`/`updated` are complete contents, never diffs. */
@@ -150,10 +180,10 @@ export interface AnaApi {
     /** Forget the backend's active repo (fresh launch / repo switch). */
     resetContext: () => Promise<IpcResult<{ ok: true }>>;
     /**
-     * Subscribe to right-panel updates pushed from voice (Tavus) turns, which
-     * bypass the renderer. Returns an unsubscribe function.
+     * Subscribe to events pushed from voice (Tavus) turns (panel updates or
+     * Build requests), which bypass the renderer. Returns an unsubscribe function.
      */
-    onPanelUpdate: (cb: (evt: TurnResult) => void) => () => void;
+    onPanelUpdate: (cb: (evt: BusEvent) => void) => () => void;
   };
   build: {
     /** Open a folder picker, validate against the repo, persist, and return the path. */
@@ -164,6 +194,8 @@ export interface AnaApi {
     turn: (req: BuildTurnRequest) => Promise<IpcResult<BuildResult>>;
     /** Undo the last operation, applying the reversed patches to disk. */
     undo: (sessionId: string, repoPath: string) => Promise<IpcResult<UndoResult>>;
+    /** Redo the most recently undone operation, re-applying its patches to disk. */
+    redo: (sessionId: string, repoPath: string) => Promise<IpcResult<UndoResult>>;
     /** Clear the session's undo history. */
     endSession: (sessionId: string) => Promise<{ ok: true }>;
   };

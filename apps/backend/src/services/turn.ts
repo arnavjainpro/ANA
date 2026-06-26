@@ -6,13 +6,15 @@ import {
 } from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getFileContents } from './github.js';
-import { validatePatches, generateOperationId } from './builder.js';
+import { validatePatches, generateOperationId, assemblePatches } from './builder.js';
 import * as history from './history.js';
+import { AppError } from '../lib/errors.js';
 import type {
   AnaResponse,
   BuildPlan,
   BuildResult,
   BuildTurnRequest,
+  IntentClassification,
   Mode,
   RetrievedChunk,
   TurnRequest,
@@ -35,12 +37,14 @@ const BUILD_FALLBACK = "I couldn't make that change just now — can you try rep
  */
 export async function processTurn(
   req: TurnRequest,
-  options: { githubToken?: string; repoFullName?: string },
+  options: { githubToken?: string; repoFullName?: string; precomputedIntent?: IntentClassification },
 ): Promise<TurnResult> {
   const history = req.history ?? [];
 
   try {
-    const intent = await classifyIntent(req.utterance, history);
+    // Reuse the caller's classification when given (voice turns classify up
+    // front to branch Build vs speak) so we don't pay for a second Haiku call.
+    const intent = options.precomputedIntent ?? (await classifyIntent(req.utterance, history));
 
     // Resolve the effective mode: a manual override from the UI wins, otherwise
     // use the classifier. Only Understand/Plan are supported this build.
@@ -163,36 +167,56 @@ export async function processBuildTurn(
       files,
     });
 
-    // Ana intentionally produced no patches (clarifying question or refusal).
-    if (!response.patches || response.patches.length === 0) {
+    // Ana intentionally proposed no edits (clarifying question or refusal).
+    if (!response.files || response.files.length === 0) {
       return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
     }
 
-    const validation = await validatePatches(response.patches);
+    // Turn the per-file edits into full-file patches the rest of the pipeline uses.
+    const { patches } = assemblePatches(files, response.files);
+    if (patches.length === 0) {
+      return {
+        spoken: "I couldn't find the exact spot to change — can you point me to it or say it a different way?",
+        patches: [],
+        operationId: '',
+      };
+    }
+
+    const validation = await validatePatches(patches);
     if (!validation.valid) {
       return { spoken: validation.reason ?? BUILD_FALLBACK, patches: [], operationId: '' };
     }
 
-    const first = response.patches[0];
+    const first = patches[0];
     if (!first) {
       return { spoken: response.spoken || BUILD_FALLBACK, patches: [], operationId: '' };
     }
     const summary =
-      response.patches.length === 1
-        ? first.summary
-        : `${first.summary} (${response.patches.length} files)`;
+      patches.length === 1 ? first.summary : `${first.summary} (${patches.length} files)`;
 
     const operationId = generateOperationId();
     history.push(req.sessionId, {
       operationId,
       timestamp: Date.now(),
-      patches: response.patches,
+      patches,
       summary,
     });
+    // A fresh change invalidates anything that was undone.
+    history.clearRedo(req.sessionId);
 
-    return { spoken: response.spoken, patches: response.patches, operationId };
+    return { spoken: response.spoken, patches, operationId };
   } catch (err) {
-    console.error('[build] processing failed:', err instanceof Error ? err.message : err);
+    const code = err instanceof AppError ? err.code : undefined;
+    console.error('[build] processing failed:', code ?? '', err instanceof Error ? err.message : err);
+    // A truncated/unparseable model reply almost always means the target file
+    // was too large to rewrite whole — tell the user something actionable.
+    if (code === 'CLAUDE_BAD_JSON') {
+      return {
+        spoken: "That file's a bit too big for me to rewrite all at once — try a smaller or more specific change.",
+        patches: [],
+        operationId: '',
+      };
+    }
     return { spoken: SPOKEN_FALLBACK, patches: [], operationId: '' };
   }
 }
@@ -204,12 +228,24 @@ export async function processBuildTurn(
 export function undoBuild(sessionId: string): UndoResult {
   const op = history.pop(sessionId);
   if (!op) return { spoken: 'There is nothing to undo.', patches: [] };
+  history.pushRedo(sessionId, op);
   const reversed = op.patches.map((patch) => ({
     ...patch,
     original: patch.updated,
     updated: patch.original,
   }));
   return { spoken: 'Undone.', patches: reversed };
+}
+
+/**
+ * Re-apply the most recently undone operation: pop it off the redo stack, put it
+ * back on the undo stack, and return its forward patches for the client to apply.
+ */
+export function redoBuild(sessionId: string): UndoResult {
+  const op = history.popRedo(sessionId);
+  if (!op) return { spoken: 'There is nothing to redo.', patches: [] };
+  history.push(sessionId, op);
+  return { spoken: 'Redone.', patches: op.patches };
 }
 
 /** Drop a session's undo history (called when the session ends). */

@@ -3,7 +3,7 @@ import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
 import type {
   AnaResponse,
-  BuildResponse,
+  BuildEditResponse,
   ConversationTurn,
   IntentClassification,
   Mode,
@@ -39,13 +39,18 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
 {
   "mode": "Understand | Plan | Build | Debug | Review",
   "intent": "<one sentence summary of what the user wants>",
-  "target": "<file, feature, or component if mentioned, else null>"
+  "target": "<file, feature, or component if mentioned, else null>",
+  "undo": true | false,
+  "redo": true | false
 }
 
 Rules:
+- Set "undo" to true when the user is asking to undo, revert, take back, or roll back the last change ("undo that", "revert it", "go back"). Otherwise set it to false.
+- Set "redo" to true when the user is asking to redo or re-apply a change they just undid ("redo that", "redo the change", "put it back", "do it again"). Otherwise set it to false.
 - Choose "Understand" when the user wants to know what the codebase does or how something works.
-- Choose "Plan" when the user wants to build, add, or design a feature or product.
-- Only "Understand" and "Plan" are currently supported. If the utterance fits Build, Debug, or Review, still return that label honestly.
+- Choose "Build" when the user wants you to make a concrete change to the existing code right now — add, edit, change, remove, rename, fix, or update something in a file. Imperative phrasing like "add…", "change…", "make it…", "remove…", "rename…", or "fix…" is almost always Build.
+- Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.
+- If the utterance fits Debug or Review, return that label honestly.
 - target is null unless a concrete file, function, feature, or component is named.
 - Respond with the JSON object only.`;
 
@@ -132,7 +137,7 @@ Rules:
 
 const BUILD_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person make changes to their codebase.
 
-Your job is to write the exact code changes needed to fulfil the user's request — nothing more, nothing less.
+Your job is to write the exact code changes needed to fulfil the user's request — nothing more, nothing less. You edit real source code in any language (TypeScript, JavaScript, Python, CSS, HTML, JSON, and so on), not just prose or documentation — making the code change IS the job, so make it.
 
 You will receive:
 - The user's spoken request
@@ -140,29 +145,36 @@ You will receive:
 - Relevant code chunks retrieved from the rest of the repo
 - Recent conversation history
 
-You must respond with a JSON object in this exact shape:
+You make changes as small, targeted edits — never by rewriting whole files. Always answer by calling the submit_edits tool. Its fields are:
 {
   "spoken": "<Ana's spoken confirmation — 1–2 sentences, plain speech, no code>",
-  "patches": [
+  "files": [
     {
-      "path": "<relative file path from repo root>",
-      "original": "<full original file contents, exactly as provided to you>",
-      "updated": "<full updated file contents with your changes applied>",
-      "summary": "<one sentence describing what changed in this file>"
+      "path": "<relative file path from repo root, exactly as given to you>",
+      "summary": "<one sentence describing what changed in this file>",
+      "edits": [
+        {
+          "oldString": "<exact snippet copied verbatim from the current file>",
+          "newString": "<what that snippet becomes>"
+        }
+      ]
     }
   ]
 }
 
 Rules:
-- Return the full file contents in both original and updated — not a diff, not a snippet.
-- original must be byte-for-byte identical to the file contents you were given. Do not modify it.
-- updated must be valid, working code. Do not leave placeholder comments like "// rest of file unchanged" — include everything.
-- Maximum 5 files per operation. If the change requires more, return zero patches and explain in spoken.
-- Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks.
-- Do not add dependencies (npm packages) — only modify existing files.
+- For each change, choose the SMALLEST snippet of the current file that needs to change and put it in "oldString", with the replacement in "newString". Do not output whole files.
+- "oldString" must be copied character-for-character from the file contents you were given — exact text, exact indentation — and must appear EXACTLY ONCE in that file. Include a few surrounding lines if needed to make it unique.
+- To insert new code, set "oldString" to an existing nearby line and include that line plus your new lines in "newString".
+- To create a NEW file, use a single edit with "oldString": "" and "newString" set to the full contents of the new file.
+- Edits within a file are applied in order and must not overlap.
+- Include a file entry only for files you actually change. Use the exact "path" you were given.
+- Maximum 5 files per operation. If the change needs more, return an empty "files" array and explain in spoken.
+- Make a reasonable, minimal change that fulfils the request. Only return an empty "files" array and ask ONE clarifying question when you genuinely cannot tell what to change — never ask just because the request is casual or non-technical.
+- Do not touch configuration files (.env, tsconfig, package.json) unless the user explicitly asks. Do not add dependencies — only modify existing files.
 - spoken must be plain speech. No code, no markdown, no file paths.
-- If the request is ambiguous, return zero patches and ask one clarifying question in spoken.
-- Respond only with the JSON object. No preamble, no explanation outside the JSON.`;
+- spoken is a brief, friendly, user-facing line. NEVER narrate your own process or reasoning — do not say what you are checking, reviewing, "going through", or "making sure" of, and do not think out loud. Just confirm the change in plain terms, or if you genuinely cannot proceed, ask one short question.
+- Always respond by calling submit_edits. Do not write any text outside the tool call.`;
 
 const NO_REPO_GUIDANCE_PROMPT = `You are Ana, a warm, patient voice-first AI coding partner for someone who is not technical. Right now you cannot see any of their code, because no repository has been connected and indexed yet.
 
@@ -232,7 +244,12 @@ function parseJsonObject<T>(raw: string): T {
   if (first === -1 || last === -1) {
     throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return parseable JSON.');
   }
-  return JSON.parse(text.slice(first, last + 1)) as T;
+  try {
+    return JSON.parse(text.slice(first, last + 1)) as T;
+  } catch {
+    // Reaches here mainly when a long reply was truncated mid-object.
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude returned malformed JSON.');
+  }
 }
 
 function blockText(message: Anthropic.Message): string {
@@ -242,10 +259,10 @@ function blockText(message: Anthropic.Message): string {
     .trim();
 }
 
-function formatHistory(history: ConversationTurn[]): string {
+function formatHistory(history: ConversationTurn[], maxTurns = 6): string {
   if (history.length === 0) return '(no prior conversation)';
   return history
-    .slice(-6)
+    .slice(-maxTurns)
     .map((t) => `${t.role === 'user' ? 'User' : 'Ana'}: ${t.content}`)
     .join('\n');
 }
@@ -412,27 +429,69 @@ export async function generateArchitectureSummary(params: {
   return blockText(message);
 }
 
-/** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + file patches. */
+// Forcing this tool guarantees a schema-valid response object (no prose, no
+// markdown), which is far more reliable than parsing free text — and unlike
+// assistant prefill, the reasoning model supports it.
+const BUILD_TOOL: Anthropic.Tool = {
+  name: 'submit_edits',
+  description: "Submit Ana's spoken reply and the file edits to apply.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      spoken: { type: 'string', description: "Ana's spoken reply — 1–2 plain sentences." },
+      files: {
+        type: 'array',
+        description: 'One entry per file changed; empty if no change is being made.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Relative path, exactly as given.' },
+            summary: { type: 'string', description: 'One sentence on what changed.' },
+            edits: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  oldString: { type: 'string', description: 'Exact unique snippet to replace; "" to create a new file.' },
+                  newString: { type: 'string', description: 'Replacement text.' },
+                },
+                required: ['oldString', 'newString'],
+              },
+            },
+          },
+          required: ['path', 'summary', 'edits'],
+        },
+      },
+    },
+    required: ['spoken', 'files'],
+  },
+};
+
+/** Call 2 — Build mode reasoning (Sonnet). Returns spoken reply + per-file edits. */
 export async function generateBuildResponse(params: {
   utterance: string;
   intent: IntentClassification;
   chunks: RetrievedChunk[];
   history: ConversationTurn[];
   files: { path: string; contents: string }[];
-}): Promise<BuildResponse> {
+}): Promise<BuildEditResponse> {
   const { utterance, intent, chunks, history, files } = params;
 
   const contextParts = [
     `Full contents of the target file(s):\n${formatFiles(files)}`,
     `Retrieved code chunks:\n${formatChunks(chunks)}`,
-    `Recent conversation:\n${formatHistory(history)}`,
+    // Wider window than other calls so a build that follows a planning chat
+    // still sees what was planned.
+    `Recent conversation:\n${formatHistory(history, 14)}`,
     `Classified intent: ${JSON.stringify(intent)}`,
     `User request: ${utterance}`,
   ];
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
-    max_tokens: 8000,
+    // Edits are small snippets (not whole files), so a modest ceiling is plenty
+    // and leaves headroom for creating a sizeable new file.
+    max_tokens: 16000,
     system: [
       {
         type: 'text',
@@ -440,10 +499,16 @@ export async function generateBuildResponse(params: {
         cache_control: { type: 'ephemeral' },
       },
     ],
+    tools: [BUILD_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_edits' },
     messages: [{ role: 'user', content: contextParts.join('\n\n') }],
   });
 
-  return parseJsonObject<BuildResponse>(blockText(message));
+  const toolUse = message.content.find((b) => b.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return any edits.');
+  }
+  return toolUse.input as BuildEditResponse;
 }
 
 /**

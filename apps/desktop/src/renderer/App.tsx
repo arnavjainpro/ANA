@@ -3,7 +3,6 @@ import { TopBar } from './components/TopBar';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTreeSection } from './components/FileTreeSection';
 import { AnaConversation } from './components/AnaConversation';
-import { Composer } from './components/Composer';
 import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
@@ -13,6 +12,73 @@ import { useRepoStore } from './store/repoStore';
 import { useConversationStore } from './store/conversationStore';
 import { useBuildStore } from './store/buildStore';
 import { isIpcError } from './lib/ipc';
+import { speakViaTavus } from './lib/voiceEcho';
+import type { ConversationTurn, FilePatch } from '../types';
+
+// Varied lines Ana speaks once a voice change has actually been applied.
+const BUILD_DONE = [
+  'Okay, just made that change.',
+  "Done — that's updated.",
+  'There we go, that change is in.',
+  "All set, I've made that change.",
+] as const;
+
+function pickDone(): string {
+  return BUILD_DONE[Math.floor(Math.random() * BUILD_DONE.length)] ?? BUILD_DONE[0];
+}
+
+/** Apply a spoken change request to disk via the existing Build pipeline. */
+async function handleVoiceBuild(transcript: string, history: ConversationTurn[]): Promise<void> {
+  const repo = useRepoStore.getState();
+  const convo = useConversationStore.getState();
+  const build = useBuildStore.getState();
+  const fullName = repo.selectedRepo?.full_name;
+
+  useUiStore.getState().setActiveMode('Build');
+  // Resolve a stored folder if Build mode was never opened this session.
+  if (!build.repoPath && fullName) await build.ensureRepoPath(fullName);
+
+  // History comes from the backend (Tavus) — the renderer doesn't record voice
+  // turns, so this is how Build sees what was just planned out loud.
+  convo.appendUserTurn(transcript);
+  const res = await useBuildStore.getState().runTurn({
+    transcript,
+    history,
+    repoId: repo.repoId ?? undefined,
+    repoFullName: fullName,
+  });
+  if (!res) return; // No local folder chosen — buildStore set the guiding error.
+
+  if (res.patches.length > 0) {
+    for (const patch of res.patches) convo.pushAssistant(voiceNarration(patch));
+    speakViaTavus(pickDone());
+  } else if (res.spoken) {
+    // No change made — voice Ana's clarifying question / reason so it isn't silent.
+    convo.pushAssistant(res.spoken);
+    speakViaTavus(res.spoken);
+  }
+}
+
+function voiceNarration(patch: FilePatch): string {
+  const name = patch.path.split('/').pop() ?? patch.path;
+  return `Updated ${name} — ${patch.summary}`;
+}
+
+/** Reverse the last change in response to a spoken "undo". */
+async function handleVoiceUndo(): Promise<void> {
+  const spoken = await useBuildStore.getState().undo();
+  if (!spoken) return;
+  useConversationStore.getState().pushAssistant(spoken);
+  speakViaTavus(spoken);
+}
+
+/** Re-apply the most recently undone change in response to a spoken "redo". */
+async function handleVoiceRedo(): Promise<void> {
+  const spoken = await useBuildStore.getState().redo();
+  if (!spoken) return;
+  useConversationStore.getState().pushAssistant(spoken);
+  speakViaTavus(spoken);
+}
 
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
@@ -43,10 +109,22 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // Voice (Tavus) turns render their diagram/whiteboard via a pushed event,
-  // since they never pass through the renderer's text-turn path.
+  // Voice (Tavus) turns reach the renderer via pushed events: a 'panel' renders
+  // a diagram/board; a 'build-request' applies a change through the Build pipeline.
   useEffect(() => {
     const unsubscribe = window.ana.conversation.onPanelUpdate((evt) => {
+      if (evt.type === 'build-request') {
+        void handleVoiceBuild(evt.transcript, evt.history);
+        return;
+      }
+      if (evt.type === 'undo-request') {
+        void handleVoiceUndo();
+        return;
+      }
+      if (evt.type === 'redo-request') {
+        void handleVoiceRedo();
+        return;
+      }
       setActiveMode(evt.mode);
       applyPanel(evt);
       setPanelLoading(false);
@@ -134,7 +212,6 @@ export default function App(): JSX.Element {
           <div className="flex-1 min-h-0 overflow-hidden">
             <AnaConversation />
           </div>
-          <Composer />
         </aside>
 
         <div

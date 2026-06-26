@@ -5,6 +5,7 @@ import {
   planBuildTurn,
   processBuildTurn,
   undoBuild,
+  redoBuild,
   endBuildSession,
 } from '../services/turn.js';
 import { setActiveRepo, clearActiveRepo } from '../services/activeRepo.js';
@@ -111,6 +112,19 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Missing sessionId', code: 'MISSING_FIELDS' });
       }
       return reply.send(undoBuild(sessionId));
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Redo the most recently undone Build operation; returns its forward patches.
+  app.post<{ Body: { sessionId: string } }>('/conversation/redo', async (req, reply) => {
+    try {
+      const { sessionId } = req.body ?? {};
+      if (!sessionId) {
+        return reply.status(400).send({ error: 'Missing sessionId', code: 'MISSING_FIELDS' });
+      }
+      return reply.send(redoBuild(sessionId));
     } catch (err) {
       return sendError(reply, err);
     }

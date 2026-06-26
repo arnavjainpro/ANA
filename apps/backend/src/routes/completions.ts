@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  classifyIntent,
   generateNoRepoReply,
   streamSpokenReply,
   SPOKEN_FALLBACK,
@@ -9,9 +10,43 @@ import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
 import { getArchitectureSummary } from '../services/architectureSummary.js';
 import { getActiveRepo } from '../services/activeRepo.js';
-import { publishPanel } from '../services/panelBus.js';
+import {
+  publishPanel,
+  publishBuildRequest,
+  publishUndoRequest,
+  publishRedoRequest,
+} from '../services/panelBus.js';
 import { env } from '../lib/env.js';
-import type { ConversationTurn } from '../lib/types.js';
+import type { ConversationTurn, IntentClassification } from '../lib/types.js';
+
+// Short, non-committal acks spoken while the desktop applies a voice change;
+// the actual outcome is spoken afterwards by the renderer. Varied so Ana doesn't
+// repeat herself.
+const BUILD_ACKS = [
+  'Sure, let me take care of that.',
+  'On it.',
+  'Okay, give me a moment.',
+  'Got it — working on that now.',
+  'Alright, let me do that.',
+] as const;
+
+function pickBuildAck(): string {
+  return BUILD_ACKS[Math.floor(Math.random() * BUILD_ACKS.length)] ?? BUILD_ACKS[0];
+}
+
+// Spoken while the desktop reverses the last change; the outcome follows.
+const UNDO_ACKS = ['Sure, undoing that.', 'Okay, rolling that back.', 'Got it, reverting that.'] as const;
+
+function pickUndoAck(): string {
+  return UNDO_ACKS[Math.floor(Math.random() * UNDO_ACKS.length)] ?? UNDO_ACKS[0];
+}
+
+// Spoken while the desktop re-applies the change; the outcome follows.
+const REDO_ACKS = ['Sure, redoing that.', 'Okay, putting that back.', 'Got it, redoing that.'] as const;
+
+function pickRedoAck(): string {
+  return REDO_ACKS[Math.floor(Math.random() * REDO_ACKS.length)] ?? REDO_ACKS[0];
+}
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
 interface ChatMessage {
@@ -26,24 +61,6 @@ interface ChatCompletionRequest {
 }
 
 type Delta = { role?: 'assistant'; content?: string };
-
-// Short, generic acknowledgements spoken the instant a turn starts, before the
-// RAG retrieval + first model token land — otherwise the user hears a few
-// seconds of dead air. Picked at random each turn so Ana doesn't repeat the same
-// line. The trailing space lets the real reply flow on naturally. Kept generic
-// so any answer can follow without the opener sounding wrong. This only goes to
-// the spoken SSE stream, never the right panel.
-const FILLERS = [
-  'Sure, let me take a look. ',
-  'Good question — one second. ',
-  'Let me check that for you. ',
-  'Alright, looking into it. ',
-  'Okay, let me see. ',
-] as const;
-
-function pickFiller(): string {
-  return FILLERS[Math.floor(Math.random() * FILLERS.length)] ?? FILLERS[0];
-}
 
 /** Emit one OpenAI-style chat.completion.chunk SSE line. */
 function chunkLine(
@@ -61,18 +78,13 @@ function chunkLine(
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-/**
- * Fire the full reasoning pipeline for its visual payload and publish it to the
- * desktop panel — WITHOUT blocking speech. Tavus only consumes the spoken
- * stream, so the diagram/whiteboard has to reach the app out-of-band. Runs
- * detached (never awaited) so a slow Sonnet call can't delay the voice reply,
- * and swallows its own errors so a panel failure never touches the stream.
- */
+// Produce the visual panel and publish it out-of-band. Detached so a slow
+// Sonnet call never delays the voice reply; swallows its own errors.
 function publishPanelInBackground(
   repoId: string,
   transcript: string,
   history: ConversationTurn[],
-  options: { githubToken?: string; repoFullName?: string },
+  options: { githubToken?: string; repoFullName?: string; precomputedIntent?: IntentClassification },
 ): void {
   void processTurn({ repoId, utterance: transcript, history }, options)
     .then((result) => {
@@ -88,18 +100,11 @@ function publishPanelInBackground(
     });
 }
 
-/**
- * OpenAI-compatible endpoint Tavus calls on every conversation turn. Speech is a
- * single streaming Haiku call grounded in RAG chunks: deltas are forwarded to
- * Tavus the instant they arrive, keeping time-to-first-word low and barge-in
- * responsive. The heavier panel pipeline runs detached (see above), so the
- * diagram never sits in the speech path.
- */
+// OpenAI-compatible endpoint Tavus calls on every voice turn: streams a
+// RAG-grounded spoken reply, with the panel/Build work handled out-of-band.
 export async function completionsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatCompletionRequest }>('/v1/chat/completions', async (req, reply) => {
-    // This endpoint is publicly reachable (Tavus calls it over the internet), so
-    // require the shared secret when one is configured. Tavus sends the persona
-    // LLM layer's api_key as a Bearer token. Blank secret = check disabled (dev).
+    // Publicly reachable, so require the shared secret (Bearer) when configured.
     if (env.ana.llmSecret) {
       const auth = req.headers.authorization ?? '';
       if (auth !== `Bearer ${env.ana.llmSecret}`) {
@@ -144,33 +149,41 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     try {
       const active = getActiveRepo();
       if (active?.repoId) {
-        // Speak a short filler immediately so Ana starts talking while RAG
-        // retrieval and the first model token are still in flight — this hides
-        // the few seconds of dead air the Promise.all below would otherwise cost.
-        reply.raw.write(chunkLine(base, { content: pickFiller() }, null));
-
-        // Retrieve grounding chunks and the whole-project map in parallel (the
-        // map is cached after the first turn), then stream the spoken reply token
-        // by token. The visual panel is produced separately and out of band.
-        const [chunks, projectMap, architectureSummary] = await Promise.all([
+        // Classify in parallel with retrieval (no added latency), then branch:
+        // Build goes to the desktop to apply on disk; else answer by voice.
+        const [intent, chunks, projectMap, architectureSummary] = await Promise.all([
+          classifyIntent(transcript, history),
           retrieveChunks(active.repoId, transcript),
           active.githubToken && active.repoFullName
             ? getProjectMap(active.repoFullName, active.githubToken)
             : Promise.resolve(undefined),
           getArchitectureSummary(active.repoId),
         ]);
-        publishPanelInBackground(active.repoId, transcript, history, {
-          githubToken: active.githubToken,
-          repoFullName: active.repoFullName,
-        });
-        for await (const delta of streamSpokenReply({
-          utterance: transcript,
-          history,
-          chunks,
-          projectMap,
-          architectureSummary,
-        })) {
-          reply.raw.write(chunkLine(base, { content: delta }, null));
+
+        if (intent.undo) {
+          publishUndoRequest();
+          reply.raw.write(chunkLine(base, { content: pickUndoAck() }, null));
+        } else if (intent.redo) {
+          publishRedoRequest();
+          reply.raw.write(chunkLine(base, { content: pickRedoAck() }, null));
+        } else if (intent.mode === 'Build') {
+          publishBuildRequest(transcript, history);
+          reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));
+        } else {
+          publishPanelInBackground(active.repoId, transcript, history, {
+            githubToken: active.githubToken,
+            repoFullName: active.repoFullName,
+            precomputedIntent: intent,
+          });
+          for await (const delta of streamSpokenReply({
+            utterance: transcript,
+            history,
+            chunks,
+            projectMap,
+            architectureSummary,
+          })) {
+            reply.raw.write(chunkLine(base, { content: delta }, null));
+          }
         }
       } else {
         // No repo connected/indexed yet — guide the user through connecting one

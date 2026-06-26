@@ -218,7 +218,7 @@ export function FileTree(): JSX.Element {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              <span className="truncate text-sm font-medium text-ana-text">{node.name}</span>
+              <span className="whitespace-nowrap text-sm font-medium text-ana-text">{node.name}</span>
             </button>
             {isOpen && node.children.length > 0 && <ul>{renderNodes(node.children, depth + 1)}</ul>}
           </li>
@@ -232,7 +232,7 @@ export function FileTree(): JSX.Element {
           <div
             onClick={buildMode ? () => void openBuildFile(node.path) : undefined}
             style={{ paddingLeft: pad + 18 }}
-            className={`group relative flex items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
+            className={`group relative flex w-full items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
               buildMode ? 'cursor-pointer' : 'cursor-default'
             } ${isOpenFile ? 'bg-ana-brand-soft' : 'hover:bg-ana-hover'}`}
             title={node.path}
@@ -242,7 +242,7 @@ export function FileTree(): JSX.Element {
             )}
             {fileIcon(node.name)}
             <span
-              className={`min-w-0 flex-1 truncate text-sm ${
+              className={`flex-1 whitespace-nowrap text-sm ${
                 isOpenFile ? 'text-ana-text' : 'text-ana-text-muted group-hover:text-ana-text'
               }`}
             >
@@ -260,5 +260,7 @@ export function FileTree(): JSX.Element {
       );
     });
 
-  return <ul className="overflow-auto py-1 text-sm">{renderNodes(tree, 0)}</ul>;
+  // w-max lets rows grow to their natural width so the wrapper scrolls sideways
+  // for long names; min-w-full keeps hover/selection spanning the full width.
+  return <ul className="w-max min-w-full py-1 text-sm">{renderNodes(tree, 0)}</ul>;
 }

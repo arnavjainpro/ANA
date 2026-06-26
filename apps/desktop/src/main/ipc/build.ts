@@ -124,6 +124,30 @@ export function registerBuildIpc(): void {
     },
   );
 
+  // Redo the most recently undone operation: backend re-issues the forward
+  // patches, we apply to disk + stage.
+  ipcMain.handle(
+    'build:redo',
+    async (_e, sessionId: string, repoPath: string): Promise<IpcResult<UndoResult>> => {
+      try {
+        const result = await backendJson<UndoResult>('/conversation/redo', {
+          method: 'POST',
+          body: JSON.stringify({ sessionId }),
+        });
+        if (result.patches.length > 0) {
+          await applyPatchesToDisk(repoPath, result.patches);
+          await stagePaths(
+            repoPath,
+            result.patches.map((p) => p.path),
+          );
+        }
+        return result;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Redo failed.' };
+      }
+    },
+  );
+
   // Clear the session's undo history (GitHub disconnect / app close).
   ipcMain.handle('build:endSession', async (_e, sessionId: string): Promise<{ ok: true }> => {
     try {

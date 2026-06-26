@@ -1,29 +1,64 @@
-// Tiny in-process pub/sub for right-panel updates produced by VOICE turns.
-//
-// Voice turns arrive via Tavus -> /v1/chat/completions, which returns only the
-// spoken text to Tavus. The visual payload (Understand diagram / Plan board) has
-// nowhere to go, so we publish it here; the desktop app subscribes over
-// /conversation/events and renders it. In-app text turns don't need this — they
-// already get the full result back from /conversation/turn.
+// In-process pub/sub bridging VOICE turns (Tavus -> /v1/chat/completions) to the
+// desktop, which subscribes over /conversation/events. Events are discriminated
+// by `type`: 'panel' renders a diagram/board; 'build-request' hands a spoken
+// change to the desktop's Build pipeline to apply on disk.
 
-import type { Mode } from '../lib/types.js';
+import type { ConversationTurn, Mode } from '../lib/types.js';
 
 export interface PanelEvent {
+  type: 'panel';
   mode: Mode;
   spoken: string;
   panel: 'diagram' | 'whiteboard';
   payload: unknown;
 }
 
-type Listener = (event: PanelEvent) => void;
+export interface BuildRequestEvent {
+  type: 'build-request';
+  /** The user's spoken utterance for the desktop's Build pipeline to act on. */
+  transcript: string;
+  /** Prior conversation (from Tavus) so Build has the planning context. */
+  history: ConversationTurn[];
+}
+
+export interface UndoRequestEvent {
+  type: 'undo-request';
+}
+
+export interface RedoRequestEvent {
+  type: 'redo-request';
+}
+
+export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent | RedoRequestEvent;
+
+type Listener = (event: BusEvent) => void;
 
 const listeners = new Set<Listener>();
 
-export function publishPanel(event: PanelEvent): void {
+function emit(event: BusEvent): void {
   for (const listener of listeners) listener(event);
 }
 
-/** Subscribe to panel events; returns an unsubscribe function. */
+export function publishPanel(event: Omit<PanelEvent, 'type'>): void {
+  emit({ type: 'panel', ...event });
+}
+
+/** Hand a voice change request to the desktop to apply on the local working copy. */
+export function publishBuildRequest(transcript: string, history: ConversationTurn[]): void {
+  emit({ type: 'build-request', transcript, history });
+}
+
+/** Ask the desktop to undo the last change applied this session. */
+export function publishUndoRequest(): void {
+  emit({ type: 'undo-request' });
+}
+
+/** Ask the desktop to redo the most recently undone change. */
+export function publishRedoRequest(): void {
+  emit({ type: 'redo-request' });
+}
+
+/** Subscribe to bus events; returns an unsubscribe function. */
 export function subscribePanel(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

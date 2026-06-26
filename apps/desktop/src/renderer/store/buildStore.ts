@@ -46,6 +46,8 @@ interface BuildState {
   }) => Promise<{ spoken: string; patches: FilePatch[] } | null>;
   /** Undo the last operation; returns Ana's spoken reply. */
   undo: () => Promise<string | null>;
+  /** Redo the most recently undone operation; returns Ana's spoken reply. */
+  redo: () => Promise<string | null>;
   refreshGitStatus: () => Promise<void>;
   setError: (error: string | null) => void;
   endSession: () => void;
@@ -182,6 +184,29 @@ export const useBuildStore = create<BuildState>((set, get) => ({
         lastPatches: [],
         canUndo: false,
         lastSummary: null,
+      }));
+      void get().refreshGitStatus();
+      void get().loadLocalTree();
+    }
+    return result.spoken;
+  },
+
+  redo: async () => {
+    const { repoPath, sessionId } = get();
+    if (!repoPath) return null;
+    set({ busy: true, error: null });
+    const result = await window.ana.build.redo(sessionId, repoPath);
+    set({ busy: false });
+    if (isIpcError(result)) {
+      set({ error: result.error });
+      return result.error;
+    }
+    if (result.patches.length > 0) {
+      set((state) => ({
+        ...applyPatchToOpenFile(state, result.patches),
+        lastPatches: result.patches,
+        canUndo: true,
+        lastSummary: summaryFor(result.patches),
       }));
       void get().refreshGitStatus();
       void get().loadLocalTree();
