@@ -6,6 +6,7 @@ import {
   SPOKEN_FALLBACK,
 } from '../services/claude.js';
 import { processTurn } from '../services/turn.js';
+import { resolveDiagramView } from '../services/diagramView.js';
 import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
 import { getArchitectureSummary } from '../services/architectureSummary.js';
@@ -80,12 +81,45 @@ function chunkLine(
 
 // Produce the visual panel and publish it out-of-band. Detached so a slow
 // Sonnet call never delays the voice reply; swallows its own errors.
+//
+// Plan turns still generate a fresh whiteboard each time. Understand turns go
+// through the diagram cache, which gates redraws (follow-ups hold the current
+// view) and serves frozen overview/focus/detail maps so the picture stays stable.
 function publishPanelInBackground(
   repoId: string,
   transcript: string,
   history: ConversationTurn[],
   options: { githubToken?: string; repoFullName?: string; precomputedIntent?: IntentClassification },
 ): void {
+  const intent = options.precomputedIntent;
+
+  if (intent && intent.mode !== 'Plan') {
+    void resolveDiagramView({
+      repoId,
+      repoFullName: options.repoFullName,
+      githubToken: options.githubToken,
+      intent,
+    })
+      .then((view) => {
+        // null => no diagram change this turn; leave the current view on screen.
+        if (!view) return;
+        publishPanel({
+          mode: 'Understand',
+          // Highlighting tracks Ana's live speech (and the payload's
+          // highlightedNodes); the panel itself carries no separate narration.
+          spoken: '',
+          panel: 'diagram',
+          payload: view.payload,
+          view: view.view,
+          focusSubject: view.focusSubject,
+        });
+      })
+      .catch((err) => {
+        console.error('[completions] diagram publish failed:', err instanceof Error ? err.message : err);
+      });
+    return;
+  }
+
   void processTurn({ repoId, utterance: transcript, history }, options)
     .then((result) => {
       publishPanel({

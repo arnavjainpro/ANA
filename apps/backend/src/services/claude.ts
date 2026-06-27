@@ -545,6 +545,84 @@ export async function generateOverviewDiagram(params: {
   return parsed.payload as DiagramPayload;
 }
 
+// Static system prompt for a per-component DEEP-DIVE diagram. Generated once per
+// subject (on first request) and cached, so re-asking "explain X in depth"
+// returns the identical detail map. This is a separate view the user navigates
+// INTO — it never mutates the canonical overview.
+const DETAIL_DIAGRAM_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a focused deep-dive diagram of ONE component of a software project, for a curious user who wants to see how that one part works inside.
+
+You will receive the component's name and code chunks retrieved from the repo (each labelled with its file path). Build the diagram only from what these chunks evidence. Do not invent parts.
+
+Diagram rules:
+- Use "graph TD".
+- Centre the diagram on the named component and show its INTERNALS — the real files, functions, routes, handlers, or sub-modules that make it up — plus the things it directly connects to (the datastores it uses and the external/other services it calls).
+- Use real names from the code. No generic labels like "Module" or "Service" on their own.
+- Limit to the 12 most relevant nodes. If the component is larger, show the most important pieces and say so in spoken.
+
+Edge rules:
+- Every edge is a real relationship from the chunks — a call, an import, a data read/write, an external call.
+- Label edges where the relationship type matters: "calls", "writes to", "reads from".
+
+Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
+- :::entrypoint — where control enters this component. Shape: stadium ([Label])
+- :::service — a unit that performs work. Shape: rectangle [Label]
+- :::datastore — a database, cache, or vector store. Shape: cylinder [(Label)]
+- :::external — a third-party/hosted API. Shape: rounded rectangle (Label)
+- :::module — a plain file/module. Shape: rectangle [Label]
+- :::decision — a branch/decision point. Shape: rhombus {Label}
+- The :::type suffix does NOT change the node ID. Do not emit your own classDef statements.
+
+Fallback:
+- If the chunks do not describe the named component well enough, return graph TD; A[Not enough detail on that part yet]:::module and explain in spoken what would help.
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Explain how this part works internally.
+
+highlightedNodes rules:
+- Exact node IDs in the order spoken mentions them; only IDs present in the mermaid; maximum 6.
+
+Response format — return only this JSON, no preamble:
+{
+  "spoken": "<2-3 sentence plain English explanation>",
+  "panel": "diagram",
+  "payload": {
+    "mermaid": "<valid Mermaid, no fences, real node names, every node tagged with a :::type class>",
+    "highlightedNodes": ["NodeId1", "NodeId2"]
+  }
+}`;
+
+/**
+ * Generate a deep-dive diagram of one named component from subject-scoped RAG
+ * chunks. Cached per subject by the caller so it is generated once and reused.
+ */
+export async function generateDetailDiagram(params: {
+  subject: string;
+  chunks: RetrievedChunk[];
+}): Promise<DiagramPayload> {
+  const { subject, chunks } = params;
+
+  const contextParts = [
+    `Component to explain in depth: ${subject}`,
+    `Retrieved code chunks:\n${formatChunks(chunks)}`,
+  ];
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 1500,
+    system: [
+      {
+        type: 'text',
+        text: DETAIL_DIAGRAM_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  const parsed = parseJsonObject<AnaResponse>(blockText(message));
+  return parsed.payload as DiagramPayload;
+}
+
 // Forcing this tool guarantees a schema-valid response object (no prose, no
 // markdown), which is far more reliable than parsing free text — and unlike
 // assistant prefill, the reasoning model supports it.
