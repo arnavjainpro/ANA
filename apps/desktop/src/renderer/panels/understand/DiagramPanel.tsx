@@ -629,6 +629,9 @@ export function DiagramPanel({
 
   const liveUtterance = useConversationStore((s) => s.liveUtterance);
   const lastSpoken = useConversationStore((s) => s.lastSpoken);
+  const diagramHistory = useConversationStore((s) => s.diagramHistory);
+  const activeHistoryId = useConversationStore((s) => s.activeHistoryId);
+  const selectHistoryDiagram = useConversationStore((s) => s.selectHistoryDiagram);
 
   const trimmed = code.trim();
 
@@ -1022,6 +1025,20 @@ export function DiagramPanel({
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
+          {diagramHistory.length > 1 && (
+            <select
+              aria-label="Switch diagram"
+              value={activeHistoryId ?? ''}
+              onChange={(e) => selectHistoryDiagram(e.target.value)}
+              className="ml-1 max-w-[140px] truncate rounded-lg border border-surface-border bg-surface-overlay px-2 py-1 text-xs text-edge-label outline-none transition-colors duration-150 hover:border-node-file-text hover:text-node-file-text focus-visible:border-accent-primary"
+            >
+              {diagramHistory.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

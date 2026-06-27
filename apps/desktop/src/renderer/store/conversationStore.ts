@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   ConversationTurn,
+  DiagramEntry,
   DiagramPayload,
   DiagramScope,
   PanelEvent,
@@ -25,6 +26,10 @@ interface ConversationState {
   diagramView: DiagramScope;
   /** The component a focus/detail view is about; null when showing the overview. */
   focusSubject: string | null;
+  /** Every distinct diagram seen this session, in order of first appearance. */
+  diagramHistory: DiagramEntry[];
+  /** The id of the entry currently displayed (matches DiagramEntry.id). */
+  activeHistoryId: string | null;
   whiteboard: WhiteboardPayload | null;
   error: string | null;
   /** Latest spoken utterance from the live Tavus replica, with a monotonic
@@ -47,6 +52,8 @@ interface ConversationState {
   applyPanel: (result: PanelEvent) => void;
   /** Return to the full master map (the "back to overview" breadcrumb). */
   clearDiagramFocus: () => void;
+  /** Silently switch to a previously-seen diagram by history entry id. */
+  selectHistoryDiagram: (id: string) => void;
   setError: (error: string | null) => void;
   /** Record a spoken utterance from the live replica (bumps the sequence). */
   pushUtterance: (text: string) => void;
@@ -63,7 +70,25 @@ function nextDiagram(prev: DiagramPayload | null, incoming: DiagramPayload): Dia
   return incoming;
 }
 
-export const useConversationStore = create<ConversationState>((set) => ({
+function makeEntry(
+  payload: DiagramPayload,
+  view: DiagramScope,
+  focusSubject: string | null,
+): DiagramEntry {
+  const id = focusSubject ?? 'overview';
+  const label = focusSubject ?? 'Full Architecture';
+  return { id, label, payload, view, focusSubject };
+}
+
+function upsertHistory(history: DiagramEntry[], entry: DiagramEntry): DiagramEntry[] {
+  const idx = history.findIndex((e) => e.id === entry.id);
+  if (idx === -1) return [...history, entry];
+  const next = [...history];
+  next[idx] = entry;
+  return next;
+}
+
+export const useConversationStore = create<ConversationState>((set, get) => ({
   conversationUrl: null,
   conversationId: null,
   history: [],
@@ -74,6 +99,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
   overviewDiagram: null,
   diagramView: 'overview',
   focusSubject: null,
+  diagramHistory: [],
+  activeHistoryId: null,
   whiteboard: null,
   error: null,
   liveUtterance: null,
@@ -95,13 +122,17 @@ export const useConversationStore = create<ConversationState>((set) => ({
     set((s) => {
       const isDiagram = result.panel === 'diagram';
       const payload = result.payload as DiagramPayload;
+      const nextDiag = isDiagram ? nextDiagram(s.diagram, payload) : s.diagram;
+      const entry = isDiagram ? makeEntry(nextDiag!, 'overview', null) : null;
       return {
         lastSpoken: result.spoken,
         // The text path always returns a full overview.
-        diagram: isDiagram ? nextDiagram(s.diagram, payload) : s.diagram,
+        diagram: nextDiag,
         overviewDiagram: isDiagram ? nextDiagram(s.overviewDiagram, payload) : s.overviewDiagram,
         diagramView: isDiagram ? 'overview' : s.diagramView,
         focusSubject: isDiagram ? null : s.focusSubject,
+        diagramHistory: entry ? upsertHistory(s.diagramHistory, entry) : s.diagramHistory,
+        activeHistoryId: entry ? entry.id : s.activeHistoryId,
         whiteboard:
           result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
         history: [...s.history, { role: 'assistant', content: result.spoken }],
@@ -112,9 +143,12 @@ export const useConversationStore = create<ConversationState>((set) => ({
       const isDiagram = result.panel === 'diagram';
       const view: DiagramScope = isDiagram ? result.view ?? 'overview' : s.diagramView;
       const payload = result.payload as DiagramPayload;
+      const nextDiag = isDiagram ? nextDiagram(s.diagram, payload) : s.diagram;
+      const focusSubject = isDiagram ? result.focusSubject ?? null : s.focusSubject;
+      const entry = isDiagram ? makeEntry(nextDiag!, view, focusSubject) : null;
       return {
         lastSpoken: result.spoken,
-        diagram: isDiagram ? nextDiagram(s.diagram, payload) : s.diagram,
+        diagram: nextDiag,
         // Overview and focus both carry the master map as payload; remember it so
         // we can return to it after a detail drill-in. Detail leaves it untouched.
         overviewDiagram:
@@ -122,7 +156,9 @@ export const useConversationStore = create<ConversationState>((set) => ({
             ? nextDiagram(s.overviewDiagram, payload)
             : s.overviewDiagram,
         diagramView: view,
-        focusSubject: isDiagram ? result.focusSubject ?? null : s.focusSubject,
+        focusSubject,
+        diagramHistory: entry ? upsertHistory(s.diagramHistory, entry) : s.diagramHistory,
+        activeHistoryId: entry ? entry.id : s.activeHistoryId,
         whiteboard:
           result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
       };
@@ -133,7 +169,19 @@ export const useConversationStore = create<ConversationState>((set) => ({
       diagram: s.overviewDiagram ?? s.diagram,
       diagramView: 'overview',
       focusSubject: null,
+      activeHistoryId: 'overview',
     })),
+  selectHistoryDiagram: (id) => {
+    const entry = get().diagramHistory.find((e) => e.id === id);
+    if (!entry) return;
+    set({
+      diagram: entry.payload,
+      diagramView: entry.view,
+      focusSubject: entry.focusSubject,
+      activeHistoryId: id,
+      // overviewDiagram intentionally untouched — breadcrumb still works
+    });
+  },
   setError: (error) => set({ error }),
   pushUtterance: (text) =>
     set((s) => ({

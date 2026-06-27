@@ -169,6 +169,9 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
+      // Prevent Cloudflare and nginx from buffering the stream, which would
+      // cause Tavus to see no data until the tunnel drops the connection.
+      'X-Accel-Buffering': 'no',
     });
 
     const base = {
@@ -179,6 +182,10 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
 
     // Opening chunk announces the assistant role (OpenAI streaming convention).
     reply.raw.write(chunkLine(base, { role: 'assistant', content: '' }, null));
+
+    // SSE comment pings every 15 s so Cloudflare tunnels don't kill the idle
+    // connection while we wait for Claude to start streaming tokens.
+    const keepAlive = setInterval(() => reply.raw.write(': ping\n\n'), 15_000);
 
     try {
       const active = getActiveRepo();
@@ -229,6 +236,8 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
       // Never leave Tavus hanging — speak the fallback instead.
       console.error('[completions] turn failed:', err instanceof Error ? err.message : err);
       reply.raw.write(chunkLine(base, { content: SPOKEN_FALLBACK }, null));
+    } finally {
+      clearInterval(keepAlive);
     }
 
     // Terminal chunk: empty delta + finish_reason "stop", then the DONE sentinel.

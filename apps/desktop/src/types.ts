@@ -65,6 +65,17 @@ export interface TurnResult {
 /** Which diagram view a panel payload represents. */
 export type DiagramScope = 'overview' | 'focus' | 'detail';
 
+/** One entry in the session's diagram history — used by the toolbar switcher. */
+export interface DiagramEntry {
+  /** Stable dedup key: focusSubject ?? 'overview'. */
+  id: string;
+  /** Display label: component name, or 'Full Architecture' for the overview. */
+  label: string;
+  payload: DiagramPayload;
+  view: DiagramScope;
+  focusSubject: string | null;
+}
+
 /** A diagram/board pushed from a voice turn. */
 export interface PanelEvent extends TurnResult {
   type: 'panel';

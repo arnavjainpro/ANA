@@ -85,7 +85,7 @@ export function registerRepoIpc(): void {
                 total: msg.total,
                 currentFile: msg.currentFile,
               };
-              event.sender.send('repo:index-progress', progress);
+              if (!event.sender.isDestroyed()) event.sender.send('repo:index-progress', progress);
             } else if (msg.type === 'done') {
               done = {
                 repoId: msg.repoId,
