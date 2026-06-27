@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type {
   ConversationTurn,
   DiagramPayload,
+  DiagramScope,
+  PanelEvent,
   TurnResult,
   WhiteboardPayload,
 } from '../../types';
@@ -15,6 +17,11 @@ interface ConversationState {
   sessionStarting: boolean;
   lastSpoken: string | null;
   diagram: DiagramPayload | null;
+  /** Which diagram view is showing: the whole map, a focused slice, or a
+   *  per-component detail map. Drives the renderer's filter/zoom + breadcrumb. */
+  diagramView: DiagramScope;
+  /** The component a focus/detail view is about; null when showing the overview. */
+  focusSubject: string | null;
   whiteboard: WhiteboardPayload | null;
   error: string | null;
   /** Latest spoken utterance from the live Tavus replica, with a monotonic
@@ -34,7 +41,9 @@ interface ConversationState {
   applyResult: (result: TurnResult) => void;
   /** Like applyResult but only updates the panel payload (no history append) —
    *  used for voice turns whose conversation history lives in Tavus, not here. */
-  applyPanel: (result: TurnResult) => void;
+  applyPanel: (result: PanelEvent) => void;
+  /** Return to the full master map (the "back to overview" breadcrumb). */
+  clearDiagramFocus: () => void;
   setError: (error: string | null) => void;
   /** Record a spoken utterance from the live replica (bumps the sequence). */
   pushUtterance: (text: string) => void;
@@ -59,6 +68,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
   sessionStarting: false,
   lastSpoken: null,
   diagram: null,
+  diagramView: 'overview',
+  focusSubject: null,
   whiteboard: null,
   error: null,
   liveUtterance: null,
@@ -83,6 +94,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
         result.panel === 'diagram'
           ? nextDiagram(s.diagram, result.payload as DiagramPayload)
           : s.diagram,
+      diagramView: result.panel === 'diagram' ? 'overview' : s.diagramView,
+      focusSubject: result.panel === 'diagram' ? null : s.focusSubject,
       whiteboard:
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
       history: [...s.history, { role: 'assistant', content: result.spoken }],
@@ -94,9 +107,12 @@ export const useConversationStore = create<ConversationState>((set) => ({
         result.panel === 'diagram'
           ? nextDiagram(s.diagram, result.payload as DiagramPayload)
           : s.diagram,
+      diagramView: result.panel === 'diagram' ? result.view ?? 'overview' : s.diagramView,
+      focusSubject: result.panel === 'diagram' ? result.focusSubject ?? null : s.focusSubject,
       whiteboard:
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
     })),
+  clearDiagramFocus: () => set({ diagramView: 'overview', focusSubject: null }),
   setError: (error) => set({ error }),
   pushUtterance: (text) =>
     set((s) => ({
