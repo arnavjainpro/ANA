@@ -34,6 +34,11 @@ export interface ResolveDiagramOptions {
   intent: IntentClassification;
 }
 
+// The component the user is currently looking at, per repo. Lets a follow-up
+// like "now show it in depth" (which names no part) resolve to the part already
+// in view. Cleared when the user returns to the whole-project overview.
+const lastSubject = new Map<string, string>();
+
 /**
  * Resolve the diagram view for a turn, or null when the diagram should not
  * change. Never throws — on any generation failure it returns null so the
@@ -46,9 +51,15 @@ export async function resolveDiagramView(
   if (!intent.wantsDiagram) return null;
 
   const scope: DiagramScope = intent.diagramScope ?? 'overview';
-  const subject = intent.diagramSubject?.trim() || null;
+  // A focus/detail follow-up that doesn't re-name the part falls back to the
+  // part already in view.
+  let subject = intent.diagramSubject?.trim() || null;
+  if ((scope === 'focus' || scope === 'detail') && !subject) {
+    subject = lastSubject.get(repoId) ?? null;
+  }
 
   if (scope === 'detail' && subject) {
+    lastSubject.set(repoId, subject);
     return resolveDetail(repoId, subject);
   }
 
@@ -58,8 +69,11 @@ export async function resolveDiagramView(
   const overview = await getOrBuildOverview(options, depth);
   if (!overview) return null;
   if (scope === 'focus' && subject) {
+    lastSubject.set(repoId, subject);
     return { payload: overview, view: 'focus', focusSubject: subject };
   }
+  // Back to the whole project — forget the part we were looking at.
+  lastSubject.delete(repoId);
   return { payload: overview, view: 'overview', focusSubject: null };
 }
 
