@@ -5,6 +5,8 @@ import type {
   AnaResponse,
   BuildEditResponse,
   ConversationTurn,
+  DiagramDepth,
+  DiagramPayload,
   IntentClassification,
   Mode,
   RetrievedChunk,
@@ -41,7 +43,11 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "intent": "<one sentence summary of what the user wants>",
   "target": "<file, feature, or component if mentioned, else null>",
   "undo": true | false,
-  "redo": true | false
+  "redo": true | false,
+  "wantsDiagram": true | false,
+  "diagramScope": "overview | focus | detail | null",
+  "diagramSubject": "<component/file/API name for focus or detail, else null>",
+  "diagramDepth": "basic | deep"
 }
 
 Rules:
@@ -52,6 +58,15 @@ Rules:
 - Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.
 - If the utterance fits Debug or Review, return that label honestly.
 - target is null unless a concrete file, function, feature, or component is named.
+
+Diagram view fields (only meaningful for Understand-style questions about how the code is structured or connected):
+- "wantsDiagram": true when the utterance asks to see, create, or change a visual of the architecture — e.g. "show me the architecture", "create a diagram", "make me a diagram", "draw this out", "give me a new diagram", "how is the auth API connected", "explain the payment service", "map this out", "what does the repo look like". An explicit request to create/make/draw a diagram is ALWAYS wantsDiagram true (overview if no part is named, otherwise the named part). Set it to false for follow-ups that merely continue talking about the current view ("tell me more", "why is that", "keep going", "what does that mean"), and false for Build/Plan/undo/redo turns. When false, set diagramScope and diagramSubject to null and the current diagram stays on screen.
+- "diagramScope" when wantsDiagram is true:
+  - "overview" — the whole project / overall architecture ("explain the architecture", "what does this repo do", "show me everything").
+  - "focus" — LOCATE one component on the existing map and show what it connects to ("show me the auth API", "where is X", "how is X connected", "what does X talk to").
+  - "detail" — OPEN UP one component and show what is INSIDE it as a new diagram ("explain X in depth", "an in-depth view of X", "give me a detailed look at X", "what's inside X", "break down X", "go deeper into X", "expand X", "show me the internals of X"). Anything asking to go deeper, inside, or in-depth on a single part is "detail", not "focus".
+- "diagramSubject": the exact component/file/API/service name for focus or detail (e.g. "Auth API", "payment service"). If the user asks to focus, go deeper, expand, or see something in depth WITHOUT naming the part, but the recent conversation is clearly centred on one specific part, set diagramSubject to that part. Null only for overview or when wantsDiagram is false.
+- "diagramDepth": for an OVERVIEW, "basic" by default (a simple high-level map — this is what a plain "explain/show the architecture" wants). Use "deep" ONLY when the user explicitly asks for an in-depth, detailed, or full version of the WHOLE architecture ("give me an in-depth version of the overall architecture", "show me the detailed/full architecture", "everything in detail"). For focus and detail scopes, always set "deep". Default to "basic".
 - Respond with the JSON object only.`;
 
 const UNDERSTAND_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person understand a software codebase.
@@ -242,7 +257,12 @@ Your rules:
 - Never read out code, file paths, or symbols. Describe what they do in plain words instead.
 - Reply with plain spoken sentences only. No lists, no markdown, no bullet points, no code blocks, no JSON.
 - Keep it short and spoken-friendly: 2 to 4 sentences.
-- If you are addressed as a name that isn't Ana, proceed like normal and don't correct the user.`;
+- If you are addressed as a name that isn't Ana, proceed like normal and don't correct the user.
+
+About the diagram beside you:
+- A live architecture diagram is shown on a panel next to you, and it updates by itself as you talk. You CAN show, create, redraw, zoom into, and break down diagrams.
+- NEVER say you can't make, create, or draw a diagram, and never tell the user to use another tool to draw one. You have one right there.
+- When the user asks for a diagram, to start over with a new one, to focus on a part, or to break a part down, say yes warmly and briefly describe what they'll see appear (for example, "Sure — here's a simple map of your project" or "Okay, let's zoom into the login part"). The panel takes care of the actual drawing, so you just speak.`;
 
 function systemPromptFor(mode: Mode): string {
   return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
@@ -449,6 +469,197 @@ export async function generateArchitectureSummary(params: {
   });
 
   return blockText(message);
+}
+
+// The shared node-type system every diagram prompt must follow so the renderer's
+// SVG post-processing (icons, colours, shapes) works. Kept as one constant and
+// concatenated into each static prompt — still a static string, so the prompt
+// cache holds.
+const NODE_TYPE_RULES = `Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
+- :::entrypoint — where control enters (UI/renderer, CLI, webhook). Shape: stadium ([Label])
+- :::service — a backend service, API route, or module that does work. Shape: rectangle [Label]
+- :::datastore — a database, cache, or vector store. Shape: cylinder [(Label)]
+- :::external — a third-party/hosted API the code calls (Tavus, OpenAI, GitHub, Supabase). Shape: rounded rectangle (Label)
+- :::module — a plain file/module with no more specific role. Shape: rectangle [Label]
+- :::decision — a branch/decision point. Shape: rhombus {Label}
+- The :::type suffix does NOT change the node ID — the ID is the identifier before the bracket.
+- Do not emit your own classDef statements; just attach the class.`;
+
+const DIAGRAM_RESPONSE_FORMAT = `Response format — return only this JSON, no preamble:
+{
+  "spoken": "<2-3 sentence plain English summary>",
+  "panel": "diagram",
+  "payload": {
+    "mermaid": "<valid Mermaid, no fences, real node names, every node tagged with a :::type class>",
+    "highlightedNodes": ["NodeId1", "NodeId2"]
+  }
+}`;
+
+// BASIC overview — the default. A deliberately SIMPLE, high-level map a
+// non-technical person can read at a glance. Generated once at index time.
+const OVERVIEW_BASIC_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a SIMPLE, high-level map of an entire software project for a NON-TECHNICAL person. This is the default overview, so keep it easy to read at a glance — not exhaustive.
+
+You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+
+Keep it BASIC:
+- Use "graph TD".
+- Show only the few BIG pieces of the project — aim for 4 to 7 nodes, never more than 8. Collapse related files/folders into one node (e.g. one "Backend API", one "Desktop App", one "Database"), rather than listing internals.
+- Do NOT show individual files, functions, or routes. This is the 30,000-foot view.
+- Do NOT use subgraphs. Keep it flat and simple.
+- Use friendly real names from the project. Avoid jargon where a plainer word works.
+- Connect the pieces with a few clear edges showing how they relate, labelled simply ("talks to", "stores data in", "calls").
+
+${NODE_TYPE_RULES}
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Say what the project is and how its few main pieces fit together.
+
+highlightedNodes rules:
+- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
+
+${DIAGRAM_RESPONSE_FORMAT}`;
+
+// DEEP overview — only when the user explicitly asks for an in-depth/full map of
+// the whole architecture. Comprehensive and grouped.
+const OVERVIEW_DEEP_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a DETAILED, in-depth map of an entire software project. The user explicitly asked for the full picture, so be comprehensive and well-organised.
+
+You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+
+Diagram rules:
+- Use "graph TD".
+- Show the major real parts: entry points (UI/CLI), the main services / API areas / modules, datastores, and third-party APIs the project calls — and how they connect.
+- Use real names from the structure and overview (folders, services, apps, packages). No bare generic labels like "Module" or "Layer".
+- Group related nodes with Mermaid subgraphs labelled by the folder/area they belong to when there are more than 6 nodes.
+- Aim for the most important 10–16 nodes. Prefer a complete-but-readable map over an exhaustive one.
+
+Edge rules:
+- Every edge represents a real relationship evidenced by the structure/overview — a call, an import, a data read/write, an external API call.
+- Label edges where the relationship type matters: "calls", "writes to", "reads from", "serves".
+
+${NODE_TYPE_RULES}
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Summarise what the project is and how its parts fit together. Reference the actual nodes.
+
+highlightedNodes rules:
+- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
+
+${DIAGRAM_RESPONSE_FORMAT}`;
+
+/**
+ * Generate the canonical whole-repo overview diagram. 'basic' (the default) is a
+ * simple high-level map generated once at index time; 'deep' is the detailed
+ * whole-project map generated on demand when the user asks for it. Built from the
+ * architecture summary + file structure so it is stable, not shaped by a single
+ * utterance's RAG hits.
+ */
+export async function generateOverviewDiagram(params: {
+  repoFullName: string;
+  structure: string;
+  architectureSummary: string;
+  depth?: DiagramDepth;
+}): Promise<DiagramPayload> {
+  const { repoFullName, structure, architectureSummary, depth = 'basic' } = params;
+
+  const contextParts = [
+    `Repository: ${repoFullName}`,
+    `Architecture overview:\n${architectureSummary || '(none provided)'}`,
+    `File structure:\n${structure}`,
+  ];
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 1500,
+    system: [
+      {
+        type: 'text',
+        text: depth === 'deep' ? OVERVIEW_DEEP_SYSTEM_PROMPT : OVERVIEW_BASIC_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  const parsed = parseJsonObject<AnaResponse>(blockText(message));
+  return parsed.payload as DiagramPayload;
+}
+
+// Static system prompt for a per-component DEEP-DIVE diagram. Generated once per
+// subject (on first request) and cached, so re-asking "explain X in depth"
+// returns the identical detail map. This is a separate view the user navigates
+// INTO — it never mutates the canonical overview.
+const DETAIL_DIAGRAM_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a focused deep-dive diagram of ONE component of a software project, for a curious user who wants to see how that one part works inside.
+
+You will receive the component's name and code chunks retrieved from the repo (each labelled with its file path). Build the diagram only from what these chunks evidence. Do not invent parts.
+
+Diagram rules:
+- Use "graph TD".
+- Centre the diagram on the named component and show its INTERNALS — the real files, functions, routes, handlers, or sub-modules that make it up — plus the things it directly connects to (the datastores it uses and the external/other services it calls).
+- Use real names from the code. No generic labels like "Module" or "Service" on their own.
+- Limit to the 12 most relevant nodes. If the component is larger, show the most important pieces and say so in spoken.
+
+Edge rules:
+- Every edge is a real relationship from the chunks — a call, an import, a data read/write, an external call.
+- Label edges where the relationship type matters: "calls", "writes to", "reads from".
+
+Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
+- :::entrypoint — where control enters this component. Shape: stadium ([Label])
+- :::service — a unit that performs work. Shape: rectangle [Label]
+- :::datastore — a database, cache, or vector store. Shape: cylinder [(Label)]
+- :::external — a third-party/hosted API. Shape: rounded rectangle (Label)
+- :::module — a plain file/module. Shape: rectangle [Label]
+- :::decision — a branch/decision point. Shape: rhombus {Label}
+- The :::type suffix does NOT change the node ID. Do not emit your own classDef statements.
+
+Fallback:
+- If the chunks do not describe the named component well enough, return graph TD; A[Not enough detail on that part yet]:::module and explain in spoken what would help.
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Explain how this part works internally.
+
+highlightedNodes rules:
+- Exact node IDs in the order spoken mentions them; only IDs present in the mermaid; maximum 6.
+
+Response format — return only this JSON, no preamble:
+{
+  "spoken": "<2-3 sentence plain English explanation>",
+  "panel": "diagram",
+  "payload": {
+    "mermaid": "<valid Mermaid, no fences, real node names, every node tagged with a :::type class>",
+    "highlightedNodes": ["NodeId1", "NodeId2"]
+  }
+}`;
+
+/**
+ * Generate a deep-dive diagram of one named component from subject-scoped RAG
+ * chunks. Cached per subject by the caller so it is generated once and reused.
+ */
+export async function generateDetailDiagram(params: {
+  subject: string;
+  chunks: RetrievedChunk[];
+}): Promise<DiagramPayload> {
+  const { subject, chunks } = params;
+
+  const contextParts = [
+    `Component to explain in depth: ${subject}`,
+    `Retrieved code chunks:\n${formatChunks(chunks)}`,
+  ];
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 1500,
+    system: [
+      {
+        type: 'text',
+        text: DETAIL_DIAGRAM_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  const parsed = parseJsonObject<AnaResponse>(blockText(message));
+  return parsed.payload as DiagramPayload;
 }
 
 // Forcing this tool guarantees a schema-valid response object (no prose, no

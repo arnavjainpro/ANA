@@ -5,6 +5,14 @@ export type Mode = 'Understand' | 'Plan' | 'Build' | 'Debug' | 'Review';
 /** Modes implemented in this build session. */
 export const SUPPORTED_MODES: readonly Mode[] = ['Understand', 'Plan'] as const;
 
+/** What kind of diagram view the user's utterance is asking for. */
+export type DiagramScope = 'overview' | 'focus' | 'detail';
+
+/** How much detail a diagram should carry. The overview defaults to 'basic'
+ *  (a simple high-level map); 'deep' is only used when the user explicitly asks
+ *  for an in-depth version of the whole architecture. */
+export type DiagramDepth = 'basic' | 'deep';
+
 /** Result of the Call 1 intent classification (Haiku). */
 export interface IntentClassification {
   mode: Mode;
@@ -14,6 +22,30 @@ export interface IntentClassification {
   undo?: boolean;
   /** True when the user is asking to redo/re-apply the change they just undid. */
   redo?: boolean;
+  /**
+   * True when the utterance calls for a NEW or changed diagram view. Follow-ups
+   * that just continue the conversation ("tell me more", "why") are false, so
+   * the current diagram holds still instead of being redrawn every turn.
+   */
+  wantsDiagram?: boolean;
+  /**
+   * Which view to show when wantsDiagram is true:
+   * - 'overview' — the whole-project map
+   * - 'focus'    — isolate one component + its direct connections (a filter of
+   *                the overview, same layout)
+   * - 'detail'   — a deep-dive map of one component's internals
+   * Null when no diagram is being requested.
+   */
+  diagramScope?: DiagramScope | null;
+  /** The component/file/API the focus or detail view is about; null otherwise. */
+  diagramSubject?: string | null;
+  /**
+   * How detailed an OVERVIEW the user wants. 'basic' (default) is a simple
+   * high-level map; 'deep' is the detailed whole-project map, used only when the
+   * user explicitly asks for an in-depth/full version of the overall architecture.
+   * Ignored for focus/detail scopes (a part is always shown in depth).
+   */
+  diagramDepth?: DiagramDepth;
 }
 
 /** A single turn of conversation, oldest first. */

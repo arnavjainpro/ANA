@@ -28,6 +28,9 @@ export function WorkspaceContent(): JSX.Element {
   const activeMode = useUiStore((s) => s.activeMode);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
   const diagram = useConversationStore((s) => s.diagram);
+  const diagramView = useConversationStore((s) => s.diagramView);
+  const focusSubject = useConversationStore((s) => s.focusSubject);
+  const clearDiagramFocus = useConversationStore((s) => s.clearDiagramFocus);
 
   // The mode currently painted — lags `activeMode` until the fade-out finishes.
   const [displayMode, setDisplayMode] = useState(activeMode);
@@ -85,6 +88,9 @@ export function WorkspaceContent(): JSX.Element {
           mermaid={diagram?.mermaid ?? ''}
           isLoading={isPanelLoading}
           highlightedNodes={diagram?.highlightedNodes}
+          view={diagramView}
+          focusSubject={focusSubject}
+          onBackToOverview={clearDiagramFocus}
         />
       )}
     </div>

@@ -24,16 +24,18 @@ mermaid.initialize({
     clusterBkg: '#121217',
     clusterBorder: '#2A2A38',
     fontFamily: 'Inter Variable, Inter, system-ui, sans-serif',
-    fontSize: '13px',
+    fontSize: '15px',
     nodeBorder: '1.5px',
     nodeTextColor: '#E6E8EC',
   },
   flowchart: {
     htmlLabels: true,
     curve: 'step',
-    padding: 30,
-    nodeSpacing: 70,
-    rankSpacing: 96,
+    // Tighter than before so even a small project produces a compact diagram
+    // that fits the panel at a legible scale (instead of being shrunk to fit).
+    padding: 16,
+    nodeSpacing: 45,
+    rankSpacing: 60,
     useMaxWidth: false,
   },
   securityLevel: 'loose',
@@ -46,6 +48,9 @@ const SVG_EDGE_LABEL = '#9AA0AE';
 const HIGHLIGHT_COLOR = '#3B82F6';
 const HIGHLIGHT_GLOW_COLOR = 'rgba(59,130,246,0.45)';
 const ELBOW_RADIUS = 8;
+// How far to fade nodes/edges that are not part of the focused slice.
+const FOCUS_DIM_OPACITY = '0.12';
+const FOCUS_FADE = 'opacity 220ms ease';
 
 /**
  * The semantic node-type system. Ana tags each node with one of these classes
@@ -128,10 +133,19 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+type DiagramView = 'overview' | 'focus' | 'detail';
+
 interface DiagramPanelProps {
   mermaid: string;
   isLoading: boolean;
   highlightedNodes?: string[];
+  /** Which view is showing: the whole map, a focused slice of it, or a
+   *  per-component detail map. Defaults to 'overview'. */
+  view?: DiagramView;
+  /** The component a focus/detail view is about; null for the overview. */
+  focusSubject?: string | null;
+  /** Invoked by the "back to overview" breadcrumb. */
+  onBackToOverview?: () => void;
 }
 
 // --- Toolbar icons -----------------------------------------------------------
@@ -272,6 +286,62 @@ function matchNode(utterance: string, entries: NodeEntry[]): string | null {
     }
   }
   return bestId;
+}
+
+/** Length of the shared leading run of two strings. */
+function commonPrefixLen(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  return i;
+}
+
+/**
+ * Resolve a spoken subject ("the authentication part") to a rendered node id.
+ * First tries the strict substring matcher; if that misses, falls back to the
+ * node sharing the longest leading run with the subject (>= 4 chars), so loose
+ * paraphrases like "authentication" still land on a node such as "AuthService".
+ */
+function resolveSubjectNode(subject: string, entries: NodeEntry[]): string | null {
+  const strict = matchNode(subject, entries);
+  if (strict) return strict;
+
+  const subj = squash(subject);
+  if (subj.length < 4) return null;
+  let bestId: string | null = null;
+  let bestLen = 3; // require at least 4 shared leading chars
+  for (const e of entries) {
+    const len = Math.max(commonPrefixLen(subj, e.squashed), commonPrefixLen(subj, e.core));
+    if (len > bestLen) {
+      bestLen = len;
+      bestId = e.id;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Read an edge path's endpoints from Mermaid's `LS-<source>` / `LE-<target>`
+ * classes (Link Start / Link End). Returns nulls if the classes aren't present.
+ */
+function edgeEndpoints(el: Element): { source: string | null; target: string | null } {
+  let source: string | null = null;
+  let target: string | null = null;
+  el.classList.forEach((cls) => {
+    if (cls.startsWith('LS-')) source = cls.slice(3);
+    else if (cls.startsWith('LE-')) target = cls.slice(3);
+  });
+  return { source, target };
+}
+
+/** The node IDs directly connected to `subjectId` by an edge, plus the subject. */
+function focusKeepSet(container: Element, subjectId: string): Set<string> {
+  const keep = new Set<string>([subjectId]);
+  container.querySelectorAll<SVGElement>('.edgePath path, path.flowchart-link, .flowchart-link').forEach((el) => {
+    const { source, target } = edgeEndpoints(el);
+    if (source === subjectId && target) keep.add(target);
+    else if (target === subjectId && source) keep.add(source);
+  });
+  return keep;
 }
 
 /** Read the semantic type from a node's CSS classes, else fall back. */
@@ -532,7 +602,14 @@ function postProcessSvg(svgString: string): string {
 }
 
 /** Renders the Understand-mode Mermaid diagram with pan/zoom, Lucidchart styling, and node highlighting. */
-export function DiagramPanel({ mermaid: code, isLoading, highlightedNodes }: DiagramPanelProps): JSX.Element {
+export function DiagramPanel({
+  mermaid: code,
+  isLoading,
+  highlightedNodes,
+  view = 'overview',
+  focusSubject = null,
+  onBackToOverview,
+}: DiagramPanelProps): JSX.Element {
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const prevCode = useRef<string | null>(null);
@@ -603,19 +680,117 @@ export function DiagramPanel({ mermaid: code, isLoading, highlightedNodes }: Dia
     };
   }, [code, trimmed]);
 
-  // Fit + center the freshly rendered diagram, after layout has settled.
+  // Resolve the focus subject (a spoken name like "Auth API") to a rendered
+  // node id, and the set of nodes to keep visible (it + its direct neighbours).
+  // Reads the live DOM rather than nodeIndexRef so it is correct on a fresh SVG
+  // regardless of effect ordering. Returns null when there's nothing to focus.
+  const resolveFocusTarget = (): { subjectId: string; keep: Set<string> } | null => {
+    const container = svgContainerRef.current;
+    if (!container || view !== 'focus' || !focusSubject) return null;
+    const entries: NodeEntry[] = [];
+    container.querySelectorAll<SVGElement>('[data-node-id]').forEach((el) => {
+      const id = el.getAttribute('data-node-id');
+      if (!id) return;
+      const labelEl = el.querySelector('.nodeLabel, .label');
+      const label = (labelEl?.textContent ?? id).trim();
+      entries.push({ id, label, squashed: squash(label), core: coreKeyword(label) });
+    });
+    const subjectId = resolveSubjectNode(focusSubject, entries);
+    if (!subjectId) return null;
+    return { subjectId, keep: focusKeepSet(container, subjectId) };
+  };
+
+  // Dim everything outside the focused slice (or restore all when keep is null).
+  const applyFocusDim = (
+    container: Element,
+    keep: Set<string> | null,
+    subjectId: string | null,
+  ): void => {
+    container.querySelectorAll<SVGElement>('[data-node-id]').forEach((el) => {
+      const id = el.getAttribute('data-node-id');
+      const dim = keep !== null && (!id || !keep.has(id));
+      el.style.transition = FOCUS_FADE;
+      el.style.opacity = dim ? FOCUS_DIM_OPACITY : '';
+    });
+    container
+      .querySelectorAll<SVGElement>('.edgePath path, path.flowchart-link, .flowchart-link')
+      .forEach((el) => {
+        let dim = false;
+        if (keep !== null && subjectId) {
+          const { source, target } = edgeEndpoints(el);
+          dim = !(source === subjectId || target === subjectId);
+        }
+        el.style.transition = FOCUS_FADE;
+        el.style.opacity = dim ? FOCUS_DIM_OPACITY : '';
+      });
+  };
+
+  // Zoom/center on the kept nodes, keeping their on-screen positions identical to
+  // the overview (we only change the viewport, never the layout).
+  const zoomToKeep = (keep: Set<string>): void => {
+    const api = transformRef.current;
+    const container = svgContainerRef.current;
+    if (!api || !container) return;
+    const wrapperEl = container.closest('.react-transform-wrapper');
+    if (!wrapperEl) return;
+    const wrapRect = wrapperEl.getBoundingClientRect();
+    const s0 = api.state.scale || 1;
+    const px0 = api.state.positionX || 0;
+    const py0 = api.state.positionY || 0;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    keep.forEach((id) => {
+      const el = container.querySelector<SVGElement>(`[data-node-id="${CSS.escape(id)}"]`);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      minX = Math.min(minX, r.left);
+      minY = Math.min(minY, r.top);
+      maxX = Math.max(maxX, r.right);
+      maxY = Math.max(maxY, r.bottom);
+    });
+    if (!Number.isFinite(minX)) {
+      fitView(300);
+      return;
+    }
+
+    // Screen px → content coords (undo the current pan/zoom).
+    const cMinX = (minX - wrapRect.left - px0) / s0;
+    const cMinY = (minY - wrapRect.top - py0) / s0;
+    const cMaxX = (maxX - wrapRect.left - px0) / s0;
+    const cMaxY = (maxY - wrapRect.top - py0) / s0;
+    const bw = Math.max(1, cMaxX - cMinX);
+    const bh = Math.max(1, cMaxY - cMinY);
+    const fit = Math.min(wrapRect.width / bw, wrapRect.height / bh) * 0.82;
+    const scale = Math.max(0.4, Math.min(2.6, fit));
+    const cx = (cMinX + cMaxX) / 2;
+    const cy = (cMinY + cMaxY) / 2;
+    api.setTransform(wrapRect.width / 2 - cx * scale, wrapRect.height / 2 - cy * scale, scale, 300);
+  };
+
+  // After each render — and whenever the focus changes — either dim+zoom to the
+  // focused slice, or restore the full map and fit it. The overview and detail
+  // views both show their whole diagram; only 'focus' filters.
   useEffect(() => {
-    if (!svg) return undefined;
+    const container = svgContainerRef.current;
+    if (!svg || !container) return undefined;
+    const target = resolveFocusTarget();
+    applyFocusDim(container, target?.keep ?? null, target?.subjectId ?? null);
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => fitView(0));
+      raf2 = requestAnimationFrame(() => {
+        if (target) zoomToKeep(target.keep);
+        else fitView(0);
+      });
     });
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [svg]);
+  }, [svg, view, focusSubject]);
 
   // Build the node-label index from the freshly rendered SVG, and reset the
   // live-driver flag so the new diagram starts on the fallback cycle until the
@@ -754,8 +929,10 @@ export function DiagramPanel({ mermaid: code, isLoading, highlightedNodes }: Dia
 
     const naturalW = svgRect.width / scale;
     const naturalH = svgRect.height / scale;
-    const fit = Math.min(wrapRect.width / naturalW, wrapRect.height / naturalH) * 0.88;
-    const clamped = Math.max(0.3, Math.min(2, fit));
+    // Fill most of the panel, and allow zooming IN (up to 2.6x) so a small,
+    // simple map is shown large and legible rather than tiny in the middle.
+    const fit = Math.min(wrapRect.width / naturalW, wrapRect.height / naturalH) * 0.92;
+    const clamped = Math.max(0.4, Math.min(2.6, fit));
     api.centerView(clamped, animationTime);
   };
 
@@ -776,14 +953,35 @@ export function DiagramPanel({ mermaid: code, isLoading, highlightedNodes }: Dia
     ? nodeIndexRef.current.find((e) => e.id === activeNodeId)?.label ?? activeNodeId
     : null;
 
+  // A focus or detail view is "scoped" — show a breadcrumb back to the full map.
+  const isScoped = view !== 'overview' && Boolean(focusSubject);
+
   return (
     <div className="flex h-full flex-col bg-surface-raised shadow-panel">
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-surface-border bg-surface-overlay px-4 py-2">
         <div className="flex items-center gap-2.5">
-          <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
-            {diagramTypeLabel(code)}
-          </h2>
+          {isScoped ? (
+            <nav aria-label="Diagram view" className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onBackToOverview?.()}
+                className="rounded text-sm text-edge-label outline-none transition-colors duration-150 hover:text-node-file-text focus-visible:text-node-file-text"
+              >
+                Overview
+              </button>
+              <span aria-hidden="true" className="text-surface-border">
+                ›
+              </span>
+              <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
+                {view === 'detail' ? `${focusSubject} — in depth` : focusSubject}
+              </h2>
+            </nav>
+          ) : (
+            <h2 tabIndex={-1} className="text-sm font-medium text-node-file-text outline-none">
+              {diagramTypeLabel(code)}
+            </h2>
+          )}
           {activeLabel && svg && (
             <div className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-primary" />
