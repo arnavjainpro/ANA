@@ -17,6 +17,9 @@ interface ConversationState {
   sessionStarting: boolean;
   lastSpoken: string | null;
   diagram: DiagramPayload | null;
+  /** The canonical master map, remembered so the "back to overview" breadcrumb
+   *  can restore it after drilling into a detail map (which replaces `diagram`). */
+  overviewDiagram: DiagramPayload | null;
   /** Which diagram view is showing: the whole map, a focused slice, or a
    *  per-component detail map. Drives the renderer's filter/zoom + breadcrumb. */
   diagramView: DiagramScope;
@@ -68,6 +71,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
   sessionStarting: false,
   lastSpoken: null,
   diagram: null,
+  overviewDiagram: null,
   diagramView: 'overview',
   focusSubject: null,
   whiteboard: null,
@@ -88,31 +92,48 @@ export const useConversationStore = create<ConversationState>((set) => ({
       history: [...s.history, { role: 'assistant', content }],
     })),
   applyResult: (result) =>
-    set((s) => ({
-      lastSpoken: result.spoken,
-      diagram:
-        result.panel === 'diagram'
-          ? nextDiagram(s.diagram, result.payload as DiagramPayload)
-          : s.diagram,
-      diagramView: result.panel === 'diagram' ? 'overview' : s.diagramView,
-      focusSubject: result.panel === 'diagram' ? null : s.focusSubject,
-      whiteboard:
-        result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
-      history: [...s.history, { role: 'assistant', content: result.spoken }],
-    })),
+    set((s) => {
+      const isDiagram = result.panel === 'diagram';
+      const payload = result.payload as DiagramPayload;
+      return {
+        lastSpoken: result.spoken,
+        // The text path always returns a full overview.
+        diagram: isDiagram ? nextDiagram(s.diagram, payload) : s.diagram,
+        overviewDiagram: isDiagram ? nextDiagram(s.overviewDiagram, payload) : s.overviewDiagram,
+        diagramView: isDiagram ? 'overview' : s.diagramView,
+        focusSubject: isDiagram ? null : s.focusSubject,
+        whiteboard:
+          result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
+        history: [...s.history, { role: 'assistant', content: result.spoken }],
+      };
+    }),
   applyPanel: (result) =>
+    set((s) => {
+      const isDiagram = result.panel === 'diagram';
+      const view: DiagramScope = isDiagram ? result.view ?? 'overview' : s.diagramView;
+      const payload = result.payload as DiagramPayload;
+      return {
+        lastSpoken: result.spoken,
+        diagram: isDiagram ? nextDiagram(s.diagram, payload) : s.diagram,
+        // Overview and focus both carry the master map as payload; remember it so
+        // we can return to it after a detail drill-in. Detail leaves it untouched.
+        overviewDiagram:
+          isDiagram && view !== 'detail'
+            ? nextDiagram(s.overviewDiagram, payload)
+            : s.overviewDiagram,
+        diagramView: view,
+        focusSubject: isDiagram ? result.focusSubject ?? null : s.focusSubject,
+        whiteboard:
+          result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
+      };
+    }),
+  clearDiagramFocus: () =>
     set((s) => ({
-      lastSpoken: result.spoken,
-      diagram:
-        result.panel === 'diagram'
-          ? nextDiagram(s.diagram, result.payload as DiagramPayload)
-          : s.diagram,
-      diagramView: result.panel === 'diagram' ? result.view ?? 'overview' : s.diagramView,
-      focusSubject: result.panel === 'diagram' ? result.focusSubject ?? null : s.focusSubject,
-      whiteboard:
-        result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
+      // Restore the master map (it was replaced on disk by a detail drill-in).
+      diagram: s.overviewDiagram ?? s.diagram,
+      diagramView: 'overview',
+      focusSubject: null,
     })),
-  clearDiagramFocus: () => set({ diagramView: 'overview', focusSubject: null }),
   setError: (error) => set({ error }),
   pushUtterance: (text) =>
     set((s) => ({
