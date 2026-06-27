@@ -24,16 +24,18 @@ mermaid.initialize({
     clusterBkg: '#121217',
     clusterBorder: '#2A2A38',
     fontFamily: 'Inter Variable, Inter, system-ui, sans-serif',
-    fontSize: '13px',
+    fontSize: '15px',
     nodeBorder: '1.5px',
     nodeTextColor: '#E6E8EC',
   },
   flowchart: {
     htmlLabels: true,
     curve: 'step',
-    padding: 30,
-    nodeSpacing: 70,
-    rankSpacing: 96,
+    // Tighter than before so even a small project produces a compact diagram
+    // that fits the panel at a legible scale (instead of being shrunk to fit).
+    padding: 16,
+    nodeSpacing: 45,
+    rankSpacing: 60,
     useMaxWidth: false,
   },
   securityLevel: 'loose',
@@ -281,6 +283,37 @@ function matchNode(utterance: string, entries: NodeEntry[]): string | null {
         }
         break;
       }
+    }
+  }
+  return bestId;
+}
+
+/** Length of the shared leading run of two strings. */
+function commonPrefixLen(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  return i;
+}
+
+/**
+ * Resolve a spoken subject ("the authentication part") to a rendered node id.
+ * First tries the strict substring matcher; if that misses, falls back to the
+ * node sharing the longest leading run with the subject (>= 4 chars), so loose
+ * paraphrases like "authentication" still land on a node such as "AuthService".
+ */
+function resolveSubjectNode(subject: string, entries: NodeEntry[]): string | null {
+  const strict = matchNode(subject, entries);
+  if (strict) return strict;
+
+  const subj = squash(subject);
+  if (subj.length < 4) return null;
+  let bestId: string | null = null;
+  let bestLen = 3; // require at least 4 shared leading chars
+  for (const e of entries) {
+    const len = Math.max(commonPrefixLen(subj, e.squashed), commonPrefixLen(subj, e.core));
+    if (len > bestLen) {
+      bestLen = len;
+      bestId = e.id;
     }
   }
   return bestId;
@@ -662,7 +695,7 @@ export function DiagramPanel({
       const label = (labelEl?.textContent ?? id).trim();
       entries.push({ id, label, squashed: squash(label), core: coreKeyword(label) });
     });
-    const subjectId = matchNode(focusSubject, entries);
+    const subjectId = resolveSubjectNode(focusSubject, entries);
     if (!subjectId) return null;
     return { subjectId, keep: focusKeepSet(container, subjectId) };
   };
@@ -730,8 +763,8 @@ export function DiagramPanel({
     const cMaxY = (maxY - wrapRect.top - py0) / s0;
     const bw = Math.max(1, cMaxX - cMinX);
     const bh = Math.max(1, cMaxY - cMinY);
-    const fit = Math.min(wrapRect.width / bw, wrapRect.height / bh) * 0.7;
-    const scale = Math.max(0.3, Math.min(2, fit));
+    const fit = Math.min(wrapRect.width / bw, wrapRect.height / bh) * 0.82;
+    const scale = Math.max(0.4, Math.min(2.6, fit));
     const cx = (cMinX + cMaxX) / 2;
     const cy = (cMinY + cMaxY) / 2;
     api.setTransform(wrapRect.width / 2 - cx * scale, wrapRect.height / 2 - cy * scale, scale, 300);
@@ -896,8 +929,10 @@ export function DiagramPanel({
 
     const naturalW = svgRect.width / scale;
     const naturalH = svgRect.height / scale;
-    const fit = Math.min(wrapRect.width / naturalW, wrapRect.height / naturalH) * 0.88;
-    const clamped = Math.max(0.3, Math.min(2, fit));
+    // Fill most of the panel, and allow zooming IN (up to 2.6x) so a small,
+    // simple map is shown large and legible rather than tiny in the middle.
+    const fit = Math.min(wrapRect.width / naturalW, wrapRect.height / naturalH) * 0.92;
+    const clamped = Math.max(0.4, Math.min(2.6, fit));
     api.centerView(clamped, animationTime);
   };
 
