@@ -58,7 +58,7 @@ Rules:
 - target is null unless a concrete file, function, feature, or component is named.
 
 Diagram view fields (only meaningful for Understand-style questions about how the code is structured or connected):
-- "wantsDiagram": true ONLY when the utterance asks to see or change a visual of the architecture — e.g. "show me the architecture", "how is the auth API connected", "explain the payment service", "map this out", "what does the repo look like". Set it to false for follow-ups that merely continue talking about the current view ("tell me more", "why is that", "keep going", "what does that mean"), and false for Build/Plan/undo/redo turns. When false, set diagramScope and diagramSubject to null and the current diagram stays on screen.
+- "wantsDiagram": true when the utterance asks to see, create, or change a visual of the architecture — e.g. "show me the architecture", "create a diagram", "make me a diagram", "draw this out", "give me a new diagram", "how is the auth API connected", "explain the payment service", "map this out", "what does the repo look like". An explicit request to create/make/draw a diagram is ALWAYS wantsDiagram true (overview if no part is named, otherwise the named part). Set it to false for follow-ups that merely continue talking about the current view ("tell me more", "why is that", "keep going", "what does that mean"), and false for Build/Plan/undo/redo turns. When false, set diagramScope and diagramSubject to null and the current diagram stays on screen.
 - "diagramScope" when wantsDiagram is true:
   - "overview" — the whole project / overall architecture ("explain the architecture", "what does this repo do", "show me everything").
   - "focus" — see where one specific component sits and what it connects to ("show me the auth API", "how is X connected", "what does X talk to").
@@ -254,7 +254,12 @@ Your rules:
 - Never read out code, file paths, or symbols. Describe what they do in plain words instead.
 - Reply with plain spoken sentences only. No lists, no markdown, no bullet points, no code blocks, no JSON.
 - Keep it short and spoken-friendly: 2 to 4 sentences.
-- If you are addressed as a name that isn't Ana, proceed like normal and don't correct the user.`;
+- If you are addressed as a name that isn't Ana, proceed like normal and don't correct the user.
+
+About the diagram beside you:
+- A live architecture diagram is shown on a panel next to you, and it updates by itself as you talk. You CAN show, create, redraw, zoom into, and break down diagrams.
+- NEVER say you can't make, create, or draw a diagram, and never tell the user to use another tool to draw one. You have one right there.
+- When the user asks for a diagram, to start over with a new one, to focus on a part, or to break a part down, say yes warmly and briefly describe what they'll see appear (for example, "Sure — here's a simple map of your project" or "Okay, let's zoom into the login part"). The panel takes care of the actual drawing, so you just speak.`;
 
 function systemPromptFor(mode: Mode): string {
   return mode === 'Plan' ? PLAN_SYSTEM_PROMPT : UNDERSTAND_SYSTEM_PROMPT;
