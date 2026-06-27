@@ -41,7 +41,10 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "intent": "<one sentence summary of what the user wants>",
   "target": "<file, feature, or component if mentioned, else null>",
   "undo": true | false,
-  "redo": true | false
+  "redo": true | false,
+  "wantsDiagram": true | false,
+  "diagramScope": "overview | focus | detail | null",
+  "diagramSubject": "<component/file/API name for focus or detail, else null>"
 }
 
 Rules:
@@ -52,6 +55,14 @@ Rules:
 - Choose "Plan" only when the user wants to think through or design a NEW feature at a high level, rather than make an immediate code change.
 - If the utterance fits Debug or Review, return that label honestly.
 - target is null unless a concrete file, function, feature, or component is named.
+
+Diagram view fields (only meaningful for Understand-style questions about how the code is structured or connected):
+- "wantsDiagram": true ONLY when the utterance asks to see or change a visual of the architecture — e.g. "show me the architecture", "how is the auth API connected", "explain the payment service", "map this out", "what does the repo look like". Set it to false for follow-ups that merely continue talking about the current view ("tell me more", "why is that", "keep going", "what does that mean"), and false for Build/Plan/undo/redo turns. When false, set diagramScope and diagramSubject to null and the current diagram stays on screen.
+- "diagramScope" when wantsDiagram is true:
+  - "overview" — the whole project / overall architecture ("explain the architecture", "what does this repo do", "show me everything").
+  - "focus" — see where one specific component sits and what it connects to ("show me the auth API", "how is X connected", "what does X talk to").
+  - "detail" — go deep INTO one component's internals ("explain X in depth", "how does X work inside", "break down X", "show me the internals of X").
+- "diagramSubject": the exact component/file/API/service name for focus or detail (e.g. "Auth API", "payment service"). Null for overview or when wantsDiagram is false.
 - Respond with the JSON object only.`;
 
 const UNDERSTAND_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person understand a software codebase.
