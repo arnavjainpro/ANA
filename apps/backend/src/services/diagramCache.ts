@@ -6,10 +6,10 @@
 //
 // Modeled on services/history.ts (a plain in-memory Map, no external state).
 
-import type { DiagramPayload } from '../lib/types.js';
+import type { DiagramDepth, DiagramPayload } from '../lib/types.js';
 
-/** The two kinds of cached diagram. 'overview' is the single canonical
- *  whole-repo map; 'detail' is a per-subject deep-dive map. */
+/** The two kinds of cached diagram. 'overview' is the canonical whole-repo map
+ *  (one per depth); 'detail' is a per-subject deep-dive map. */
 export type DiagramKind = 'overview' | 'detail';
 
 // repoId -> cacheKey -> frozen payload.
@@ -21,24 +21,31 @@ export function normalizeSubject(subject: string | null | undefined): string {
   return (subject ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
-function keyFor(kind: DiagramKind, subject: string | null | undefined): string {
-  return kind === 'overview' ? 'overview' : `detail:${normalizeSubject(subject)}`;
+interface DiagramKeyParts {
+  subject?: string | null;
+  /** Only meaningful for the overview; defaults to 'basic'. */
+  depth?: DiagramDepth;
+}
+
+function keyFor(kind: DiagramKind, parts: DiagramKeyParts): string {
+  if (kind === 'overview') return `overview:${parts.depth ?? 'basic'}`;
+  return `detail:${normalizeSubject(parts.subject)}`;
 }
 
 /** Fetch a cached diagram, or null if it hasn't been generated yet. */
 export function getDiagram(
   repoId: string,
   kind: DiagramKind,
-  subject: string | null = null,
+  parts: DiagramKeyParts = {},
 ): DiagramPayload | null {
-  return cache.get(repoId)?.get(keyFor(kind, subject)) ?? null;
+  return cache.get(repoId)?.get(keyFor(kind, parts)) ?? null;
 }
 
 /** Store a freshly generated diagram so every later request reuses it verbatim. */
 export function setDiagram(
   repoId: string,
   kind: DiagramKind,
-  subject: string | null,
+  parts: DiagramKeyParts,
   payload: DiagramPayload,
 ): void {
   let repoCache = cache.get(repoId);
@@ -46,12 +53,12 @@ export function setDiagram(
     repoCache = new Map<string, DiagramPayload>();
     cache.set(repoId, repoCache);
   }
-  repoCache.set(keyFor(kind, subject), payload);
+  repoCache.set(keyFor(kind, parts), payload);
 }
 
-/** True once the canonical overview has been generated for this repo. */
+/** True once the basic overview has been generated for this repo. */
 export function hasOverview(repoId: string): boolean {
-  return cache.get(repoId)?.has('overview') ?? false;
+  return cache.get(repoId)?.has('overview:basic') ?? false;
 }
 
 /** Drop every cached diagram for a repo — called when the repo is re-indexed so

@@ -14,7 +14,12 @@ import { generateOverviewDiagram, generateDetailDiagram } from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getArchitectureSummary } from './architectureSummary.js';
 import { getProjectMap } from './projectMap.js';
-import type { DiagramPayload, DiagramScope, IntentClassification } from '../lib/types.js';
+import type {
+  DiagramDepth,
+  DiagramPayload,
+  DiagramScope,
+  IntentClassification,
+} from '../lib/types.js';
 
 export interface DiagramView {
   payload: DiagramPayload;
@@ -47,9 +52,10 @@ export async function resolveDiagramView(
     return resolveDetail(repoId, subject);
   }
 
-  // overview and focus both render the canonical master map; focus just carries
-  // a subject the renderer uses to filter + zoom.
-  const overview = await getOrBuildOverview(options);
+  // Focus zooms into the simple (basic) overview; an explicit "in-depth overall"
+  // request asks for the deep overview. Default is the basic map.
+  const depth: DiagramDepth = scope === 'focus' ? 'basic' : intent.diagramDepth ?? 'basic';
+  const overview = await getOrBuildOverview(options, depth);
   if (!overview) return null;
   if (scope === 'focus' && subject) {
     return { payload: overview, view: 'focus', focusSubject: subject };
@@ -59,14 +65,14 @@ export async function resolveDiagramView(
 
 /** Serve a cached detail map, or generate one once from subject-scoped RAG. */
 async function resolveDetail(repoId: string, subject: string): Promise<DiagramView | null> {
-  const cached = getDiagram(repoId, 'detail', subject);
+  const cached = getDiagram(repoId, 'detail', { subject });
   if (cached) return { payload: cached, view: 'detail', focusSubject: subject };
 
   try {
     const chunks = await retrieveChunks(repoId, subject);
     const payload = await generateDetailDiagram({ subject, chunks });
     if (!payload.mermaid?.trim()) return null;
-    setDiagram(repoId, 'detail', subject, payload);
+    setDiagram(repoId, 'detail', { subject }, payload);
     return { payload, view: 'detail', focusSubject: subject };
   } catch (err) {
     console.error('[diagram] detail generation failed:', err instanceof Error ? err.message : err);
@@ -75,13 +81,17 @@ async function resolveDetail(repoId: string, subject: string): Promise<DiagramVi
 }
 
 /**
- * Return the frozen overview, or build it lazily for repos that were indexed
- * before the overview was generated at index time. The lazy build reuses the
- * same architecture-summary + structure inputs, so it matches the index-time map.
+ * Return the frozen overview for the requested depth. The basic overview is
+ * generated at index time; the deep overview (and, for repos indexed before this
+ * feature, a missing basic one) is built lazily here from the same
+ * architecture-summary + structure inputs, then cached.
  */
-async function getOrBuildOverview(options: ResolveDiagramOptions): Promise<DiagramPayload | null> {
+async function getOrBuildOverview(
+  options: ResolveDiagramOptions,
+  depth: DiagramDepth,
+): Promise<DiagramPayload | null> {
   const { repoId, repoFullName, githubToken } = options;
-  const cached = getDiagram(repoId, 'overview', null);
+  const cached = getDiagram(repoId, 'overview', { depth });
   if (cached) return cached;
 
   try {
@@ -95,9 +105,10 @@ async function getOrBuildOverview(options: ResolveDiagramOptions): Promise<Diagr
       repoFullName: repoFullName ?? 'this repository',
       structure: structure ?? '',
       architectureSummary: architectureSummary ?? '',
+      depth,
     });
     if (!payload.mermaid?.trim()) return null;
-    setDiagram(repoId, 'overview', null, payload);
+    setDiagram(repoId, 'overview', { depth }, payload);
     return payload;
   } catch (err) {
     console.error('[diagram] overview build failed:', err instanceof Error ? err.message : err);

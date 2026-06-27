@@ -204,9 +204,10 @@ async function buildOverviewDiagram(
       repoFullName: fullName,
       structure: renderRepoStructure(tree),
       architectureSummary: architectureSummary ?? '',
+      depth: 'basic',
     });
     if (!payload.mermaid?.trim()) return;
-    setDiagram(repoId, 'overview', null, payload);
+    setDiagram(repoId, 'overview', { depth: 'basic' }, payload);
   } catch (err) {
     console.error(
       '[indexer] overview diagram failed:',
