@@ -62,9 +62,18 @@ export interface TurnResult {
   payload: DiagramPayload | WhiteboardPayload;
 }
 
+/** Which diagram view a panel payload represents. */
+export type DiagramScope = 'overview' | 'focus' | 'detail';
+
 /** A diagram/board pushed from a voice turn. */
 export interface PanelEvent extends TurnResult {
   type: 'panel';
+  /** For diagram panels: the view this payload represents. 'focus' reuses the
+   *  overview payload and is filtered/zoomed to `focusSubject` in the renderer;
+   *  'detail' carries a dedicated deep-dive map. Absent for whiteboards. */
+  view?: DiagramScope;
+  /** The component the focus/detail view is about; null/absent for overview. */
+  focusSubject?: string | null;
 }
 
 /** A spoken change request from a voice turn, applied via the Build pipeline. */

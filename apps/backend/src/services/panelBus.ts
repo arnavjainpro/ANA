@@ -3,7 +3,7 @@
 // by `type`: 'panel' renders a diagram/board; 'build-request' hands a spoken
 // change to the desktop's Build pipeline to apply on disk.
 
-import type { ConversationTurn, Mode } from '../lib/types.js';
+import type { ConversationTurn, DiagramScope, Mode } from '../lib/types.js';
 
 export interface PanelEvent {
   type: 'panel';
@@ -11,6 +11,12 @@ export interface PanelEvent {
   spoken: string;
   panel: 'diagram' | 'whiteboard';
   payload: unknown;
+  /** For diagram panels: which view this payload represents. The renderer uses
+   *  it to decide between showing the master map, filtering it to a focus
+   *  subject, or swapping to a detail map. Absent for whiteboard panels. */
+  view?: DiagramScope;
+  /** The node/component the focus or detail view is about; null for overview. */
+  focusSubject?: string | null;
 }
 
 export interface BuildRequestEvent {
