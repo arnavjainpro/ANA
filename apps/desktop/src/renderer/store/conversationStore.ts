@@ -40,6 +40,17 @@ interface ConversationState {
   pushUtterance: (text: string) => void;
 }
 
+/**
+ * Keep the existing diagram object when the incoming map is byte-identical, so a
+ * repeated view (the cached overview served again, a follow-up turn) doesn't get
+ * a fresh object identity that re-runs the panel's render/highlight effects and
+ * makes the diagram visibly churn. A genuinely new map replaces it as normal.
+ */
+function nextDiagram(prev: DiagramPayload | null, incoming: DiagramPayload): DiagramPayload {
+  if (prev && prev.mermaid === incoming.mermaid) return prev;
+  return incoming;
+}
+
 export const useConversationStore = create<ConversationState>((set) => ({
   conversationUrl: null,
   conversationId: null,
@@ -68,7 +79,10 @@ export const useConversationStore = create<ConversationState>((set) => ({
   applyResult: (result) =>
     set((s) => ({
       lastSpoken: result.spoken,
-      diagram: result.panel === 'diagram' ? (result.payload as DiagramPayload) : s.diagram,
+      diagram:
+        result.panel === 'diagram'
+          ? nextDiagram(s.diagram, result.payload as DiagramPayload)
+          : s.diagram,
       whiteboard:
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
       history: [...s.history, { role: 'assistant', content: result.spoken }],
@@ -76,7 +90,10 @@ export const useConversationStore = create<ConversationState>((set) => ({
   applyPanel: (result) =>
     set((s) => ({
       lastSpoken: result.spoken,
-      diagram: result.panel === 'diagram' ? (result.payload as DiagramPayload) : s.diagram,
+      diagram:
+        result.panel === 'diagram'
+          ? nextDiagram(s.diagram, result.payload as DiagramPayload)
+          : s.diagram,
       whiteboard:
         result.panel === 'whiteboard' ? (result.payload as WhiteboardPayload) : s.whiteboard,
     })),
