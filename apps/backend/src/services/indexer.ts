@@ -4,9 +4,10 @@ import { chunkText } from '../lib/chunking.js';
 import { isIndexable } from '../lib/fileFilter.js';
 import { embedBatch } from './embeddings.js';
 import { getRepo, getRepoTree, getFileContents } from './github.js';
-import { generateArchitectureSummary } from './claude.js';
+import { generateArchitectureSummary, generateOverviewDiagram } from './claude.js';
 import { renderRepoStructure, clearProjectMap } from './projectMap.js';
 import { setArchitectureSummary, clearArchitectureSummary } from './architectureSummary.js';
+import { setDiagram, invalidateRepo } from './diagramCache.js';
 import type { RepoTreeNode } from '../lib/types.js';
 
 const MAX_REPO_SIZE_KB = 50 * 1024; // 50MB hard cap (spec §7)
@@ -121,25 +122,31 @@ export async function indexRepo(
     .update({ indexed_at: new Date().toISOString() })
     .eq('id', repoId);
 
-  // Re-index invalidates the cached structure/summary for this repo.
+  // Re-index invalidates the cached structure/summary/diagrams for this repo.
   clearProjectMap(fullName);
   clearArchitectureSummary(repoId);
+  invalidateRepo(repoId);
 
   // Generate and persist the one-time architecture overview. Best-effort: a
   // failure here must not fail the index (the chunks are already stored).
-  await buildArchitectureSummary(token, fullName, repoId, tree);
+  const summary = await buildArchitectureSummary(token, fullName, repoId, tree);
+
+  // Freeze the canonical overview diagram so every "explain the architecture"
+  // returns the identical map. Best-effort and independent of the summary.
+  await buildOverviewDiagram(fullName, repoId, tree, summary);
 
   return { repoId, filesIndexed, chunksStored, filesSkipped };
 }
 
 /** Generate the architecture overview from the tree + README + package.json and
- *  persist it on the repo row (and the in-memory cache). Never throws. */
+ *  persist it on the repo row (and the in-memory cache). Returns the summary so
+ *  callers can reuse it without a DB round-trip. Never throws. */
 async function buildArchitectureSummary(
   token: string,
   fullName: string,
   repoId: string,
   tree: RepoTreeNode[],
-): Promise<void> {
+): Promise<string | undefined> {
   try {
     const structure = renderRepoStructure(tree);
 
@@ -166,16 +173,43 @@ async function buildArchitectureSummary(
       readme,
       keyFiles,
     });
-    if (!summary.trim()) return;
+    if (!summary.trim()) return undefined;
 
     await getSupabase()
       .from('repos')
       .update({ architecture_summary: summary })
       .eq('id', repoId);
     setArchitectureSummary(repoId, summary);
+    return summary;
   } catch (err) {
     console.error(
       '[indexer] architecture summary failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return undefined;
+  }
+}
+
+/** Generate the canonical overview diagram once and freeze it in the diagram
+ *  cache, so every later "explain the architecture" reuses the identical map
+ *  instead of drawing a fresh (and different) one. Never throws. */
+async function buildOverviewDiagram(
+  fullName: string,
+  repoId: string,
+  tree: RepoTreeNode[],
+  architectureSummary: string | undefined,
+): Promise<void> {
+  try {
+    const payload = await generateOverviewDiagram({
+      repoFullName: fullName,
+      structure: renderRepoStructure(tree),
+      architectureSummary: architectureSummary ?? '',
+    });
+    if (!payload.mermaid?.trim()) return;
+    setDiagram(repoId, 'overview', null, payload);
+  } catch (err) {
+    console.error(
+      '[indexer] overview diagram failed:',
       err instanceof Error ? err.message : err,
     );
   }

@@ -5,6 +5,7 @@ import type {
   AnaResponse,
   BuildEditResponse,
   ConversationTurn,
+  DiagramPayload,
   IntentClassification,
   Mode,
   RetrievedChunk,
@@ -460,6 +461,88 @@ export async function generateArchitectureSummary(params: {
   });
 
   return blockText(message);
+}
+
+// Static system prompt for the canonical whole-repo overview diagram. Generated
+// ONCE at index time and cached, so "explain the architecture" returns the same
+// frozen map every time. Reuses the exact node-type system the renderer's SVG
+// post-processing relies on, so the master map and focus/detail views stay
+// visually consistent.
+const OVERVIEW_DIAGRAM_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce the single canonical architecture map for an entire software project, for a non-technical person. This map is generated once and reused as the project's stable overview, so make it comprehensive and well-organised.
+
+You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+
+Diagram rules:
+- Use "graph TD" (top-down system overview).
+- Show the major real parts of the system: entry points (UI/CLI), the main services / API areas / modules, datastores, and third-party APIs the project calls — and how they connect.
+- Use real names from the structure and overview (folders, services, apps, packages). No generic labels like "Module", "Service", or "Layer" on their own.
+- Group related nodes with Mermaid subgraphs labelled by the folder/area they belong to when there are more than 6 nodes.
+- Aim for the most important 10–16 nodes. Prefer a complete-but-readable map over an exhaustive one.
+
+Edge rules:
+- Every edge represents a real relationship evidenced by the structure/overview — a call, an import, a data read/write, an external API call.
+- Label edges where the relationship type matters: "calls", "writes to", "reads from", "serves".
+
+Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
+- :::entrypoint — where control enters (UI/renderer, CLI, webhook). Shape: stadium ([Label])
+- :::service — a backend service, API route, or module that does work. Shape: rectangle [Label]
+- :::datastore — a database, cache, or vector store. Shape: cylinder [(Label)]
+- :::external — a third-party/hosted API the code calls (Tavus, OpenAI, GitHub, Supabase). Shape: rounded rectangle (Label)
+- :::module — a plain file/module with no more specific role. Shape: rectangle [Label]
+- :::decision — a branch/decision point (rare in an overview). Shape: rhombus {Label}
+- The :::type suffix does NOT change the node ID — the ID is the identifier before the bracket.
+- Do not emit your own classDef statements; just attach the class.
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Summarise what the project is and how its parts fit together. Reference the actual nodes.
+
+highlightedNodes rules:
+- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
+
+Response format — return only this JSON, no preamble:
+{
+  "spoken": "<2-3 sentence plain English summary>",
+  "panel": "diagram",
+  "payload": {
+    "mermaid": "<valid Mermaid, no fences, real node names, every node tagged with a :::type class>",
+    "highlightedNodes": ["NodeId1", "NodeId2"]
+  }
+}`;
+
+/**
+ * Generate the canonical whole-repo overview diagram (run once at index time,
+ * not per turn). Built from the architecture summary + file structure so it is
+ * comprehensive and deterministic, rather than shaped by a single utterance's
+ * RAG hits. Returns the diagram payload to be frozen in the diagram cache.
+ */
+export async function generateOverviewDiagram(params: {
+  repoFullName: string;
+  structure: string;
+  architectureSummary: string;
+}): Promise<DiagramPayload> {
+  const { repoFullName, structure, architectureSummary } = params;
+
+  const contextParts = [
+    `Repository: ${repoFullName}`,
+    `Architecture overview:\n${architectureSummary || '(none provided)'}`,
+    `File structure:\n${structure}`,
+  ];
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 1500,
+    system: [
+      {
+        type: 'text',
+        text: OVERVIEW_DIAGRAM_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: contextParts.join('\n\n') }],
+  });
+
+  const parsed = parseJsonObject<AnaResponse>(blockText(message));
+  return parsed.payload as DiagramPayload;
 }
 
 // Forcing this tool guarantees a schema-valid response object (no prose, no
