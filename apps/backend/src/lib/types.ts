@@ -8,6 +8,11 @@ export const SUPPORTED_MODES: readonly Mode[] = ['Understand', 'Plan'] as const;
 /** What kind of diagram view the user's utterance is asking for. */
 export type DiagramScope = 'overview' | 'focus' | 'detail';
 
+/** How much detail a diagram should carry. The overview defaults to 'basic'
+ *  (a simple high-level map); 'deep' is only used when the user explicitly asks
+ *  for an in-depth version of the whole architecture. */
+export type DiagramDepth = 'basic' | 'deep';
+
 /** Result of the Call 1 intent classification (Haiku). */
 export interface IntentClassification {
   mode: Mode;
@@ -34,6 +39,13 @@ export interface IntentClassification {
   diagramScope?: DiagramScope | null;
   /** The component/file/API the focus or detail view is about; null otherwise. */
   diagramSubject?: string | null;
+  /**
+   * How detailed an OVERVIEW the user wants. 'basic' (default) is a simple
+   * high-level map; 'deep' is the detailed whole-project map, used only when the
+   * user explicitly asks for an in-depth/full version of the overall architecture.
+   * Ignored for focus/detail scopes (a part is always shown in depth).
+   */
+  diagramDepth?: DiagramDepth;
 }
 
 /** A single turn of conversation, oldest first. */

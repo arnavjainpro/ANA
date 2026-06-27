@@ -5,6 +5,7 @@ import type {
   AnaResponse,
   BuildEditResponse,
   ConversationTurn,
+  DiagramDepth,
   DiagramPayload,
   IntentClassification,
   Mode,
@@ -45,7 +46,8 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "redo": true | false,
   "wantsDiagram": true | false,
   "diagramScope": "overview | focus | detail | null",
-  "diagramSubject": "<component/file/API name for focus or detail, else null>"
+  "diagramSubject": "<component/file/API name for focus or detail, else null>",
+  "diagramDepth": "basic | deep"
 }
 
 Rules:
@@ -64,6 +66,7 @@ Diagram view fields (only meaningful for Understand-style questions about how th
   - "focus" — see where one specific component sits and what it connects to ("show me the auth API", "how is X connected", "what does X talk to").
   - "detail" — go deep INTO one component's internals ("explain X in depth", "how does X work inside", "break down X", "show me the internals of X").
 - "diagramSubject": the exact component/file/API/service name for focus or detail (e.g. "Auth API", "payment service"). Null for overview or when wantsDiagram is false.
+- "diagramDepth": for an OVERVIEW, "basic" by default (a simple high-level map — this is what a plain "explain/show the architecture" wants). Use "deep" ONLY when the user explicitly asks for an in-depth, detailed, or full version of the WHOLE architecture ("give me an in-depth version of the overall architecture", "show me the detailed/full architecture", "everything in detail"). For focus and detail scopes, always set "deep". Default to "basic".
 - Respond with the JSON object only.`;
 
 const UNDERSTAND_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. You are helping a non-technical person understand a software codebase.
@@ -468,43 +471,21 @@ export async function generateArchitectureSummary(params: {
   return blockText(message);
 }
 
-// Static system prompt for the canonical whole-repo overview diagram. Generated
-// ONCE at index time and cached, so "explain the architecture" returns the same
-// frozen map every time. Reuses the exact node-type system the renderer's SVG
-// post-processing relies on, so the master map and focus/detail views stay
-// visually consistent.
-const OVERVIEW_DIAGRAM_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce the single canonical architecture map for an entire software project, for a non-technical person. This map is generated once and reused as the project's stable overview, so make it comprehensive and well-organised.
-
-You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
-
-Diagram rules:
-- Use "graph TD" (top-down system overview).
-- Show the major real parts of the system: entry points (UI/CLI), the main services / API areas / modules, datastores, and third-party APIs the project calls — and how they connect.
-- Use real names from the structure and overview (folders, services, apps, packages). No generic labels like "Module", "Service", or "Layer" on their own.
-- Group related nodes with Mermaid subgraphs labelled by the folder/area they belong to when there are more than 6 nodes.
-- Aim for the most important 10–16 nodes. Prefer a complete-but-readable map over an exhaustive one.
-
-Edge rules:
-- Every edge represents a real relationship evidenced by the structure/overview — a call, an import, a data read/write, an external API call.
-- Label edges where the relationship type matters: "calls", "writes to", "reads from", "serves".
-
-Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
+// The shared node-type system every diagram prompt must follow so the renderer's
+// SVG post-processing (icons, colours, shapes) works. Kept as one constant and
+// concatenated into each static prompt — still a static string, so the prompt
+// cache holds.
+const NODE_TYPE_RULES = `Node types — tag EVERY node with exactly one semantic type using Mermaid's class shorthand appended to the node declaration, paired with the matching shape:
 - :::entrypoint — where control enters (UI/renderer, CLI, webhook). Shape: stadium ([Label])
 - :::service — a backend service, API route, or module that does work. Shape: rectangle [Label]
 - :::datastore — a database, cache, or vector store. Shape: cylinder [(Label)]
 - :::external — a third-party/hosted API the code calls (Tavus, OpenAI, GitHub, Supabase). Shape: rounded rectangle (Label)
 - :::module — a plain file/module with no more specific role. Shape: rectangle [Label]
-- :::decision — a branch/decision point (rare in an overview). Shape: rhombus {Label}
+- :::decision — a branch/decision point. Shape: rhombus {Label}
 - The :::type suffix does NOT change the node ID — the ID is the identifier before the bracket.
-- Do not emit your own classDef statements; just attach the class.
+- Do not emit your own classDef statements; just attach the class.`;
 
-spoken rules:
-- 2–3 sentences, plain conversational English, no jargon. Summarise what the project is and how its parts fit together. Reference the actual nodes.
-
-highlightedNodes rules:
-- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
-
-Response format — return only this JSON, no preamble:
+const DIAGRAM_RESPONSE_FORMAT = `Response format — return only this JSON, no preamble:
 {
   "spoken": "<2-3 sentence plain English summary>",
   "panel": "diagram",
@@ -514,18 +495,71 @@ Response format — return only this JSON, no preamble:
   }
 }`;
 
+// BASIC overview — the default. A deliberately SIMPLE, high-level map a
+// non-technical person can read at a glance. Generated once at index time.
+const OVERVIEW_BASIC_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a SIMPLE, high-level map of an entire software project for a NON-TECHNICAL person. This is the default overview, so keep it easy to read at a glance — not exhaustive.
+
+You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+
+Keep it BASIC:
+- Use "graph TD".
+- Show only the few BIG pieces of the project — aim for 4 to 7 nodes, never more than 8. Collapse related files/folders into one node (e.g. one "Backend API", one "Desktop App", one "Database"), rather than listing internals.
+- Do NOT show individual files, functions, or routes. This is the 30,000-foot view.
+- Do NOT use subgraphs. Keep it flat and simple.
+- Use friendly real names from the project. Avoid jargon where a plainer word works.
+- Connect the pieces with a few clear edges showing how they relate, labelled simply ("talks to", "stores data in", "calls").
+
+${NODE_TYPE_RULES}
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Say what the project is and how its few main pieces fit together.
+
+highlightedNodes rules:
+- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
+
+${DIAGRAM_RESPONSE_FORMAT}`;
+
+// DEEP overview — only when the user explicitly asks for an in-depth/full map of
+// the whole architecture. Comprehensive and grouped.
+const OVERVIEW_DEEP_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a DETAILED, in-depth map of an entire software project. The user explicitly asked for the full picture, so be comprehensive and well-organised.
+
+You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+
+Diagram rules:
+- Use "graph TD".
+- Show the major real parts: entry points (UI/CLI), the main services / API areas / modules, datastores, and third-party APIs the project calls — and how they connect.
+- Use real names from the structure and overview (folders, services, apps, packages). No bare generic labels like "Module" or "Layer".
+- Group related nodes with Mermaid subgraphs labelled by the folder/area they belong to when there are more than 6 nodes.
+- Aim for the most important 10–16 nodes. Prefer a complete-but-readable map over an exhaustive one.
+
+Edge rules:
+- Every edge represents a real relationship evidenced by the structure/overview — a call, an import, a data read/write, an external API call.
+- Label edges where the relationship type matters: "calls", "writes to", "reads from", "serves".
+
+${NODE_TYPE_RULES}
+
+spoken rules:
+- 2–3 sentences, plain conversational English, no jargon. Summarise what the project is and how its parts fit together. Reference the actual nodes.
+
+highlightedNodes rules:
+- List the exact node IDs in the order spoken mentions them. Only IDs present in the mermaid. Maximum 6.
+
+${DIAGRAM_RESPONSE_FORMAT}`;
+
 /**
- * Generate the canonical whole-repo overview diagram (run once at index time,
- * not per turn). Built from the architecture summary + file structure so it is
- * comprehensive and deterministic, rather than shaped by a single utterance's
- * RAG hits. Returns the diagram payload to be frozen in the diagram cache.
+ * Generate the canonical whole-repo overview diagram. 'basic' (the default) is a
+ * simple high-level map generated once at index time; 'deep' is the detailed
+ * whole-project map generated on demand when the user asks for it. Built from the
+ * architecture summary + file structure so it is stable, not shaped by a single
+ * utterance's RAG hits.
  */
 export async function generateOverviewDiagram(params: {
   repoFullName: string;
   structure: string;
   architectureSummary: string;
+  depth?: DiagramDepth;
 }): Promise<DiagramPayload> {
-  const { repoFullName, structure, architectureSummary } = params;
+  const { repoFullName, structure, architectureSummary, depth = 'basic' } = params;
 
   const contextParts = [
     `Repository: ${repoFullName}`,
@@ -539,7 +573,7 @@ export async function generateOverviewDiagram(params: {
     system: [
       {
         type: 'text',
-        text: OVERVIEW_DIAGRAM_SYSTEM_PROMPT,
+        text: depth === 'deep' ? OVERVIEW_DEEP_SYSTEM_PROMPT : OVERVIEW_BASIC_SYSTEM_PROMPT,
         cache_control: { type: 'ephemeral' },
       },
     ],
