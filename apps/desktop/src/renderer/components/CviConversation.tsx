@@ -11,6 +11,7 @@ import {
   useVideoTrack,
 } from '@daily-co/daily-react';
 import { useConversationStore } from '../store/conversationStore';
+import { useUiStore } from '../store/uiStore';
 import { bindVoice } from '../lib/voiceEcho';
 
 /**
@@ -138,7 +139,12 @@ function CallControls(): JSX.Element {
   const btn = 'rounded-full bg-black/40 p-2 text-white backdrop-blur transition-colors hover:bg-black/60';
 
   return (
-    <div className="absolute bottom-3 left-3 flex items-center gap-2">
+    // stopPropagation: in the collapsed popup the whole stage is click-to-expand;
+    // the call controls must not also trigger that.
+    <div
+      className="absolute bottom-3 left-3 flex items-center gap-2"
+      onClick={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
         onClick={() => daily?.setLocalAudio(muted)}
@@ -199,6 +205,15 @@ function CallStage(): JSX.Element {
   const remoteIds = useParticipantIds({ filter: 'remote' });
   const anaId = remoteIds[0];
   const [error, setError] = useState<string | null>(null);
+  // Popup presentation is read from the store (not props) so this component's
+  // tree position — and the Daily call above it — stays stable across modes.
+  const isPopup = useUiStore((s) => s.windowMode === 'popup');
+  const popupExpanded = useUiStore((s) => s.popupExpanded);
+  const isCollapsedPopup = isPopup && !popupExpanded;
+
+  const expand = (): void => {
+    void window.ana.window.setPopupExpanded(true);
+  };
 
   // Surface call/device failures on screen instead of a permanent "Connecting".
   useDailyEvent(
@@ -211,7 +226,12 @@ function CallStage(): JSX.Element {
   );
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-ana-panel">
+    <div
+      className={`relative h-full w-full overflow-hidden bg-ana-panel ${
+        isCollapsedPopup ? 'cursor-pointer' : ''
+      }`}
+      onClick={isCollapsedPopup ? expand : undefined}
+    >
       {anaId ? (
         <DailyVideo
           sessionId={anaId}
@@ -233,8 +253,27 @@ function CallStage(): JSX.Element {
           type="video"
           mirror
           fit="cover"
-          className="absolute bottom-3 right-3 h-28 w-40 rounded-lg border border-ana-border object-cover shadow-lg"
+          className={`absolute bottom-3 right-3 h-28 w-40 rounded-lg border border-ana-border object-cover shadow-lg ${
+            isPopup ? 'hidden' : ''
+          }`}
         />
+      )}
+
+      {isCollapsedPopup && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            expand();
+          }}
+          aria-label="Open workspace"
+          title="Open workspace"
+          className="absolute bottom-3 right-3 rounded-full bg-black/40 p-2 text-white backdrop-blur transition-colors hover:bg-black/60"
+        >
+          <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
       )}
 
       <CallControls />

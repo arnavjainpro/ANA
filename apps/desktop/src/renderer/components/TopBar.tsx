@@ -105,8 +105,25 @@ export function TopBar(): JSX.Element {
         })}
       </div>
 
-      {/* Right: command palette + connection status */}
+      {/* Right: pop-out + command palette + connection status */}
       <div className="flex flex-1 items-center justify-end gap-2.5">
+        <button
+          type="button"
+          onClick={() => void window.ana.window.setMode('popup')}
+          className="app-no-drag flex h-7 w-7 items-center justify-center rounded-md text-ana-text-muted transition-colors duration-150 hover:bg-ana-hover hover:text-ana-text"
+          aria-label="Pop out Ana"
+          title={`Pop out Ana (${IS_MAC ? '⌘⇧A' : 'Ctrl+Shift+A'})`}
+        >
+          <svg aria-hidden="true" className="h-[16px] w-[16px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.75}
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
+          </svg>
+        </button>
+
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}

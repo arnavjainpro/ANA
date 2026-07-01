@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar';
+import { PopupHeader } from './components/PopupHeader';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTreeSection } from './components/FileTreeSection';
 import { AnaConversation } from './components/AnaConversation';
@@ -85,6 +86,9 @@ export default function App(): JSX.Element {
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
   const setActiveMode = useUiStore((s) => s.setActiveMode);
   const setPanelLoading = useUiStore((s) => s.setPanelLoading);
+  const windowMode = useUiStore((s) => s.windowMode);
+  const popupExpanded = useUiStore((s) => s.popupExpanded);
+  const setWindowState = useUiStore((s) => s.setWindowState);
   const applyPanel = useConversationStore((s) => s.applyPanel);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
@@ -96,6 +100,7 @@ export default function App(): JSX.Element {
   const errorRef = useRef<HTMLDivElement>(null);
   const anaPaneRef = useRef<HTMLElement>(null);
   const activeError = error ?? repoError;
+  const isPopup = windowMode === 'popup';
 
   // Move focus to the error message whenever one appears (OAuth / index errors).
   useEffect(() => {
@@ -128,9 +133,22 @@ export default function App(): JSX.Element {
       setActiveMode(evt.mode);
       applyPanel(evt);
       setPanelLoading(false);
+      // Popup UX: a voice-pushed diagram/board should be visible, so open the
+      // workspace flyout if it's collapsed.
+      const ui = useUiStore.getState();
+      if (ui.windowMode === 'popup' && !ui.popupExpanded) {
+        void window.ana.window.setPopupExpanded(true);
+      }
     });
     return unsubscribe;
   }, [applyPanel, setActiveMode, setPanelLoading]);
+
+  // Mirror the main process's window presentation (full ↔ popup). getMode on
+  // mount covers dev HMR reloads that happen while already in popup mode.
+  useEffect(() => {
+    void window.ana.window.getMode().then(setWindowState);
+    return window.ana.window.onModeChanged(setWindowState);
+  }, [setWindowState]);
 
   // Fresh launch: drop any active repo the backend remembered from a previous
   // session so Ana doesn't answer from a project not selected this session.
@@ -188,10 +206,10 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-ana-bg text-ana-text">
-      <TopBar />
+      {isPopup ? <PopupHeader /> : <TopBar />}
 
       <div id="main-content" className="flex flex-1 min-h-0 overflow-hidden">
-        {sidebarOpen && (
+        {sidebarOpen && !isPopup && (
           <aside
             aria-label="Repository"
             className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0"
@@ -201,14 +219,25 @@ export default function App(): JSX.Element {
           </aside>
         )}
 
+        {/* This aside (and AnaConversation inside it) must stay mounted across
+            full ↔ popup — unmounting drops the live Daily call. Only classes
+            and inline width change between presentations. */}
         <aside
           ref={anaPaneRef}
           aria-label="Ana"
           aria-busy={sessionStarting}
-          className="flex flex-col bg-ana-panel border-r border-ana-border overflow-hidden"
-          style={{ width: `${centerWidth}%` }}
+          className={`flex flex-col bg-ana-panel overflow-hidden ${
+            isPopup
+              ? popupExpanded
+                ? 'w-[280px] flex-shrink-0 border-r border-ana-border'
+                : 'flex-1'
+              : 'border-r border-ana-border'
+          }`}
+          style={isPopup ? undefined : { width: `${centerWidth}%` }}
         >
-          <RefreshContext />
+          <div className={isPopup ? 'hidden' : ''}>
+            <RefreshContext />
+          </div>
           <div className="flex-1 min-h-0 overflow-hidden">
             <AnaConversation />
           </div>
@@ -219,14 +248,18 @@ export default function App(): JSX.Element {
           onMouseDown={handleMouseDown}
           className={`w-1 cursor-col-resize bg-ana-border transition-colors hover:bg-ana-brand ${
             dragging ? 'bg-ana-brand' : ''
-          }`}
+          } ${isPopup ? 'hidden' : ''}`}
         />
 
+        {/* Hidden (not unmounted) when the popup is collapsed so Monaco/diagram
+            state survives expand/collapse. */}
         <main
           id="ana-workspace"
           aria-label="Workspace"
           aria-busy={isPanelLoading}
-          className="relative flex-1 min-h-0 overflow-hidden bg-ana-bg"
+          className={`relative flex-1 min-h-0 overflow-hidden bg-ana-bg ${
+            isPopup && !popupExpanded ? 'hidden' : ''
+          }`}
         >
           <IndexingProgress />
           <WorkspaceContent />

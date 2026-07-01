@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Mode } from '../../types';
+import type { Mode, WindowMode, WindowModeState } from '../../types';
 
 interface UiState {
   activeMode: Mode;
@@ -27,6 +27,15 @@ interface UiState {
    */
   isPanelLoading: boolean;
   setPanelLoading: (loading: boolean) => void;
+
+  /**
+   * Mirror of the main-process window presentation (full split layout vs the
+   * floating popup). The main process is the source of truth — only update this
+   * from `window:mode-changed` pushes or `window.ana.window.getMode()`.
+   */
+  windowMode: WindowMode;
+  popupExpanded: boolean;
+  setWindowState: (state: WindowModeState) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -48,4 +57,8 @@ export const useUiStore = create<UiState>((set) => ({
 
   isPanelLoading: false,
   setPanelLoading: (isPanelLoading) => set({ isPanelLoading }),
+
+  windowMode: 'full',
+  popupExpanded: false,
+  setWindowState: ({ mode, popupExpanded }) => set({ windowMode: mode, popupExpanded }),
 }));

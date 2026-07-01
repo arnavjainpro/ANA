@@ -5,6 +5,8 @@ import type {
   BusEvent,
   IndexProgress,
   TurnRequest,
+  WindowMode,
+  WindowModeState,
 } from '../types.js';
 
 // Expose ONLY named functions — never ipcRenderer itself.
@@ -56,6 +58,17 @@ const api: AnaApi = {
   },
   git: {
     status: (repoPath: string) => ipcRenderer.invoke('git:getStatus', repoPath),
+  },
+  window: {
+    setMode: (mode: WindowMode) => ipcRenderer.invoke('window:setMode', mode),
+    getMode: () => ipcRenderer.invoke('window:getMode'),
+    setPopupExpanded: (expanded: boolean) =>
+      ipcRenderer.invoke('window:setPopupExpanded', expanded),
+    onModeChanged: (cb: (state: WindowModeState) => void) => {
+      const listener = (_e: unknown, state: WindowModeState): void => cb(state);
+      ipcRenderer.on('window:mode-changed', listener);
+      return () => ipcRenderer.removeListener('window:mode-changed', listener);
+    },
   },
 };
 

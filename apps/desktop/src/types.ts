@@ -177,6 +177,22 @@ export interface IndexDone {
 /** Every IPC result is either the payload or an `{ error }` — never a throw. */
 export type IpcResult<T> = T | { error: string };
 
+// --- Window presentation ------------------------------------------------------
+
+/**
+ * Which presentation the single app window is in. 'full' is the split layout;
+ * 'popup' is the small always-on-top floating bubble (Ana's face only, with the
+ * workspace opening as an expanding flyout). The main process owns this state —
+ * the renderer only mirrors `window:mode-changed` pushes.
+ */
+export type WindowMode = 'full' | 'popup';
+
+export interface WindowModeState {
+  mode: WindowMode;
+  /** In popup mode: whether the workspace flyout is open. Always false in full. */
+  popupExpanded: boolean;
+}
+
 /** The API surface exposed to the renderer via contextBridge. */
 export interface AnaApi {
   auth: {
@@ -229,6 +245,15 @@ export interface AnaApi {
   };
   git: {
     status: (repoPath: string) => Promise<IpcResult<GitStatus>>;
+  };
+  window: {
+    /** Switch the app window between the full split layout and the floating popup. */
+    setMode: (mode: WindowMode) => Promise<IpcResult<WindowModeState>>;
+    getMode: () => Promise<WindowModeState>;
+    /** Open/close the workspace flyout while in popup mode. */
+    setPopupExpanded: (expanded: boolean) => Promise<IpcResult<WindowModeState>>;
+    /** Subscribe to mode changes (pop-out button, global shortcut). Returns unsubscribe. */
+    onModeChanged: (cb: (state: WindowModeState) => void) => () => void;
   };
 }
 

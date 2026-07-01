@@ -12,6 +12,7 @@ import {
 import { registerFilesystemIpc } from './ipc/filesystem.js';
 import { registerGitIpc } from './ipc/git.js';
 import { registerBuildIpc } from './ipc/build.js';
+import { registerWindowIpc, registerPopupShortcut, resetWindowMode } from './ipc/window.js';
 
 // Vite-plugin-electron injects these env vars in dev.
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -53,6 +54,8 @@ async function setupMediaPermissions(): Promise<void> {
 }
 
 function createWindow(): void {
+  // A fresh window always starts in the full presentation.
+  resetWindowMode();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -123,7 +126,9 @@ if (!gotLock) {
     registerFilesystemIpc();
     registerGitIpc();
     registerBuildIpc();
+    registerWindowIpc(() => mainWindow);
     createWindow();
+    registerPopupShortcut(() => mainWindow);
 
     // Handle a deep link present at first launch (Windows/Linux).
     const initialUrl = deepLinkFromArgv(process.argv);
