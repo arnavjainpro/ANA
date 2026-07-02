@@ -6,6 +6,7 @@ import {
 } from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getFileContents } from './github.js';
+import { resolveDiagramView } from './diagramView.js';
 import { validatePatches, generateOperationId, assemblePatches } from './builder.js';
 import * as history from './history.js';
 import { AppError } from '../lib/errors.js';
@@ -71,15 +72,35 @@ export async function processTurn(
       }
     }
 
-    const response = await generateResponse({
-      mode,
-      utterance: req.utterance,
-      intent,
-      chunks,
-      history,
-      fileContents,
-    });
+    // For Understand turns that ask for a diagram, resolve the CANONICAL view
+    // (persisted overview / cached detail) in parallel with the reasoning call,
+    // so text turns show the same stable maps as voice turns instead of a fresh
+    // chunk-shaped drawing. Never throws — a null just keeps the model's own.
+    const canonicalViewPromise =
+      mode === 'Understand' && intent.wantsDiagram
+        ? resolveDiagramView({
+            repoId: req.repoId,
+            repoFullName: options.repoFullName,
+            githubToken: options.githubToken,
+            intent,
+          }).catch(() => null)
+        : Promise.resolve(null);
 
+    const [response, canonicalView] = await Promise.all([
+      generateResponse({
+        mode,
+        utterance: req.utterance,
+        intent,
+        chunks,
+        history,
+        fileContents,
+      }),
+      canonicalViewPromise,
+    ]);
+
+    if (canonicalView && response.panel === 'diagram') {
+      return { ...response, payload: canonicalView.payload, mode };
+    }
     return { ...response, mode };
   } catch (err) {
     console.error('[turn] processing failed:', err instanceof Error ? err.message : err);

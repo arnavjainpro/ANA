@@ -3,7 +3,11 @@ import type {
   AnaApi,
   BuildTurnRequest,
   BusEvent,
+  ConversationTurn,
   IndexProgress,
+  ProjectProgress,
+  RunProgress,
+  ScaffoldResult,
   TurnRequest,
   WindowMode,
   WindowModeState,
@@ -58,6 +62,29 @@ const api: AnaApi = {
   },
   git: {
     status: (repoPath: string) => ipcRenderer.invoke('git:getStatus', repoPath),
+  },
+  project: {
+    scaffold: (transcript: string, history: ConversationTurn[]) =>
+      ipcRenderer.invoke('project:scaffold', transcript, history),
+    selectParentDir: (projectName: string) =>
+      ipcRenderer.invoke('project:selectParentDir', projectName),
+    create: (args: { scaffold: ScaffoldResult; parentDir: string; login: string | null }) =>
+      ipcRenderer.invoke('project:create', args),
+    onProgress: (cb: (p: ProjectProgress) => void) => {
+      const listener = (_e: unknown, p: ProjectProgress): void => cb(p);
+      ipcRenderer.on('project:progress', listener);
+      return () => ipcRenderer.removeListener('project:progress', listener);
+    },
+  },
+  run: {
+    launch: (repoPath: string) => ipcRenderer.invoke('run:launch', repoPath),
+    stop: (repoPath?: string) => ipcRenderer.invoke('run:stop', repoPath),
+    status: (repoPath: string) => ipcRenderer.invoke('run:status', repoPath),
+    onProgress: (cb: (p: RunProgress) => void) => {
+      const listener = (_e: unknown, p: RunProgress): void => cb(p);
+      ipcRenderer.on('run:progress', listener);
+      return () => ipcRenderer.removeListener('run:progress', listener);
+    },
   },
   window: {
     setMode: (mode: WindowMode) => ipcRenderer.invoke('window:setMode', mode),

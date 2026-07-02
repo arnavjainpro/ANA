@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth.js';
 import { repoRoutes } from './routes/repo.js';
 import { conversationRoutes } from './routes/conversation.js';
 import { completionsRoutes } from './routes/completions.js';
+import { projectRoutes } from './routes/project.js';
 import { ensurePersona } from './services/tavus.js';
 
 async function main(): Promise<void> {
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
   await app.register(repoRoutes);
   await app.register(conversationRoutes);
   await app.register(completionsRoutes);
+  await app.register(projectRoutes);
 
   await app.listen({ port: env.port, host: '0.0.0.0' });
   app.log.info(`Ana backend listening on :${env.port}`);

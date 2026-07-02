@@ -14,6 +14,7 @@ import { generateOverviewDiagram, generateDetailDiagram } from './claude.js';
 import { retrieveChunks } from './retrieval.js';
 import { getArchitectureSummary } from './architectureSummary.js';
 import { getProjectMap } from './projectMap.js';
+import { getModuleMap, moduleContextFor, serializeModuleMap } from './moduleMap.js';
 import type {
   DiagramDepth,
   DiagramPayload,
@@ -77,16 +78,26 @@ export async function resolveDiagramView(
   return { payload: overview, view: 'overview', focusSubject: null };
 }
 
-/** Serve a cached detail map, or generate one once from subject-scoped RAG. */
+/** Serve a cached detail map, or generate one once from subject-scoped RAG
+ *  plus the subject's module-map slice. */
 async function resolveDetail(repoId: string, subject: string): Promise<DiagramView | null> {
-  const cached = getDiagram(repoId, 'detail', { subject });
+  const cached = await getDiagram(repoId, 'detail', { subject });
   if (cached) return { payload: cached, view: 'detail', focusSubject: subject };
 
   try {
-    const chunks = await retrieveChunks(repoId, subject);
-    const payload = await generateDetailDiagram({ subject, chunks });
+    const [chunks, moduleMap] = await Promise.all([
+      retrieveChunks(repoId, subject),
+      getModuleMap(repoId),
+    ]);
+    const payload = await generateDetailDiagram({
+      subject,
+      chunks,
+      moduleContext: moduleMap ? moduleContextFor(moduleMap, subject) : undefined,
+    });
     if (!payload.mermaid?.trim()) return null;
-    setDiagram(repoId, 'detail', { subject }, payload);
+    // Fire-and-forget persist: the voice path must stay inside its latency
+    // budget; a failed write only costs cross-restart reuse.
+    void setDiagram(repoId, 'detail', { subject }, payload);
     return { payload, view: 'detail', focusSubject: subject };
   } catch (err) {
     console.error('[diagram] detail generation failed:', err instanceof Error ? err.message : err);
@@ -95,34 +106,37 @@ async function resolveDetail(repoId: string, subject: string): Promise<DiagramVi
 }
 
 /**
- * Return the frozen overview for the requested depth. The basic overview is
- * generated at index time; the deep overview (and, for repos indexed before this
- * feature, a missing basic one) is built lazily here from the same
- * architecture-summary + structure inputs, then cached.
+ * Return the frozen overview for the requested depth. Both depths are generated
+ * and persisted at index time; the cache read here is DB-backed, so a backend
+ * restart serves the identical map. The lazy build below only runs for repos
+ * indexed before this feature (using the persisted module map when available),
+ * and its result is persisted so it too becomes canonical.
  */
 async function getOrBuildOverview(
   options: ResolveDiagramOptions,
   depth: DiagramDepth,
 ): Promise<DiagramPayload | null> {
   const { repoId, repoFullName, githubToken } = options;
-  const cached = getDiagram(repoId, 'overview', { depth });
+  const cached = await getDiagram(repoId, 'overview', { depth });
   if (cached) return cached;
 
   try {
-    const [architectureSummary, structure] = await Promise.all([
+    const [architectureSummary, structure, moduleMap] = await Promise.all([
       getArchitectureSummary(repoId),
       repoFullName && githubToken
         ? getProjectMap(repoFullName, githubToken)
         : Promise.resolve(undefined),
+      getModuleMap(repoId),
     ]);
     const payload = await generateOverviewDiagram({
       repoFullName: repoFullName ?? 'this repository',
       structure: structure ?? '',
       architectureSummary: architectureSummary ?? '',
       depth,
+      moduleMap: moduleMap ? serializeModuleMap(moduleMap) : undefined,
     });
     if (!payload.mermaid?.trim()) return null;
-    setDiagram(repoId, 'overview', { depth }, payload);
+    void setDiagram(repoId, 'overview', { depth }, payload);
     return payload;
   } catch (err) {
     console.error('[diagram] overview build failed:', err instanceof Error ? err.message : err);

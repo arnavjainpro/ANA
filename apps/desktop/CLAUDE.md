@@ -40,6 +40,11 @@ src/
 
 ## Rules specific to the desktop app
 
+- Build mode never commits (`ipc/git.ts` only stages). The ONE exception is
+  project creation (`ipc/project.ts`): a brand-new project gets `git init` + an
+  initial commit + a push to the freshly created GitHub repo, using a one-shot
+  authenticated URL that is never written to `.git/config`.
+
 - The renderer accesses everything through `window.ana` (typed `AnaApi`). It must never
   import from `apps/backend` or call external APIs directly.
 - IPC channel names are colon-namespaced (`domain:action`) and must match across

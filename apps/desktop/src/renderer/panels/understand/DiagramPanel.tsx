@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import mermaid from 'mermaid';
+import elkLayouts from '@mermaid-js/layout-elk';
 import {
   TransformWrapper,
   TransformComponent,
@@ -8,12 +9,19 @@ import {
 import { useConversationStore } from '../../store/conversationStore';
 
 // --- Mermaid initialization --------------------------------------------------
-// `curve: 'step'` is the key Lucidchart lever: edges route as right-angle
-// (orthogonal) elbows instead of curvy splines. postProcessSvg then rounds the
-// elbow corners. Generous spacing gives the airy, grid-aligned worksheet feel.
+// ELK does the layout: it packs ranks far tighter than dagre and routes
+// orthogonal edges with far fewer crossings/overlaps, which is most of the
+// "legible at a glance" battle. `curve: 'step'` keeps edges as right-angle
+// elbows; postProcessSvg then rounds the corners.
+mermaid.registerLayoutLoaders(elkLayouts);
 mermaid.initialize({
   startOnLoad: false,
   theme: 'base',
+  layout: 'elk',
+  elk: {
+    nodePlacementStrategy: 'NETWORK_SIMPLEX',
+    mergeEdges: true,
+  },
   themeVariables: {
     background: '#0e0e11',
     primaryColor: '#182338',
@@ -31,8 +39,8 @@ mermaid.initialize({
   flowchart: {
     htmlLabels: true,
     curve: 'step',
-    // Tighter than before so even a small project produces a compact diagram
-    // that fits the panel at a legible scale (instead of being shrunk to fit).
+    // Spacing applies when the dagre renderer is used (old payloads / ELK
+    // unavailable); ELK computes its own spacing.
     padding: 16,
     nodeSpacing: 45,
     rankSpacing: 60,
@@ -225,8 +233,8 @@ const GitBranchIcon = (): JSX.Element => (
 
 function diagramTypeLabel(code: string): string {
   const head = code.trimStart();
-  if (head.startsWith('flowchart LR') || head.startsWith('graph LR')) return 'Data Flow';
-  if (head.startsWith('graph TD')) return 'Architecture';
+  // Canonical diagrams are all "flowchart LR" now — architecture maps, not flows.
+  if (head.startsWith('flowchart') || head.startsWith('graph')) return 'Architecture';
   return 'File Structure';
 }
 
@@ -302,6 +310,17 @@ function commonPrefixLen(a: string, b: string): number {
  * paraphrases like "authentication" still land on a node such as "AuthService".
  */
 function resolveSubjectNode(subject: string, entries: NodeEntry[]): string | null {
+  // Canonical diagrams use stable snake_case module ids — try an exact (then
+  // substring) id match first, so "backend services" lands on
+  // apps_backend_src_services without any label heuristics.
+  const subjId = squash(subject);
+  if (subjId.length >= 3) {
+    const byId =
+      entries.find((e) => squash(e.id) === subjId) ??
+      entries.find((e) => squash(e.id).includes(subjId));
+    if (byId) return byId.id;
+  }
+
   const strict = matchNode(subject, entries);
   if (strict) return strict;
 
@@ -320,24 +339,54 @@ function resolveSubjectNode(subject: string, entries: NodeEntry[]): string | nul
 }
 
 /**
- * Read an edge path's endpoints from Mermaid's `LS-<source>` / `LE-<target>`
- * classes (Link Start / Link End). Returns nulls if the classes aren't present.
+ * Read an edge path's endpoints. Dagre-rendered SVGs carry `LS-<source>` /
+ * `LE-<target>` classes; ELK-rendered ones only encode endpoints in the edge id
+ * (`<renderId>-L_<source>_<target>_<n>`). Since node ids may themselves contain
+ * underscores (snake_case module ids), the id form is disambiguated against the
+ * set of node ids actually present in the diagram.
  */
-function edgeEndpoints(el: Element): { source: string | null; target: string | null } {
+function edgeEndpoints(
+  el: Element,
+  knownIds?: readonly string[],
+): { source: string | null; target: string | null } {
   let source: string | null = null;
   let target: string | null = null;
   el.classList.forEach((cls) => {
     if (cls.startsWith('LS-')) source = cls.slice(3);
     else if (cls.startsWith('LE-')) target = cls.slice(3);
   });
-  return { source, target };
+  if (source || target || !knownIds?.length) return { source, target };
+
+  const m = (el.getAttribute('id') ?? '').match(/(?:^|-)L_(.+)_\d+$/);
+  if (!m) return { source: null, target: null };
+  const body = m[1]!;
+  let best: { source: string; target: string } | null = null;
+  for (const id of knownIds) {
+    if (!body.startsWith(`${id}_`)) continue;
+    const rest = body.slice(id.length + 1);
+    if (knownIds.includes(rest) && (!best || id.length > best.source.length)) {
+      best = { source: id, target: rest };
+    }
+  }
+  return best ?? { source: null, target: null };
+}
+
+/** All node ids currently rendered in the container. */
+function renderedNodeIds(container: Element): string[] {
+  const ids: string[] = [];
+  container.querySelectorAll('[data-node-id]').forEach((el) => {
+    const id = el.getAttribute('data-node-id');
+    if (id) ids.push(id);
+  });
+  return ids;
 }
 
 /** The node IDs directly connected to `subjectId` by an edge, plus the subject. */
 function focusKeepSet(container: Element, subjectId: string): Set<string> {
   const keep = new Set<string>([subjectId]);
+  const ids = renderedNodeIds(container);
   container.querySelectorAll<SVGElement>('.edgePath path, path.flowchart-link, .flowchart-link').forEach((el) => {
-    const { source, target } = edgeEndpoints(el);
+    const { source, target } = edgeEndpoints(el, ids);
     if (source === subjectId && target) keep.add(target);
     else if (target === subjectId && source) keep.add(source);
   });
@@ -499,9 +548,10 @@ function postProcessSvg(svgString: string): string {
 
   // --- Nodes: typed shape-cards + corner icon badge ---
   svg.querySelectorAll<SVGGElement>('.node').forEach((nodeEl) => {
+    // Dagre ids look like "flowchart-AuthService-0"; ELK prefixes the render id
+    // too: "ana-diagram-3-flowchart-auth_service-0". Strip both wrappers.
     const rawId = nodeEl.getAttribute('id') ?? '';
-    const match = rawId.match(/^(?:flowchart-)?(.+?)(?:-\d+)?$/);
-    const nodeId = match?.[1] ?? rawId;
+    const nodeId = rawId.replace(/^.*?flowchart-/, '').replace(/-\d+$/, '');
     if (nodeId) nodeEl.setAttribute('data-node-id', nodeId);
 
     const type = nodeTypeOf(nodeEl);
@@ -511,7 +561,13 @@ function postProcessSvg(svgString: string): string {
     shape.setAttribute('fill', type.fill);
     shape.setAttribute('stroke', type.border);
     shape.setAttribute('stroke-width', '1.5');
-    (shape as SVGElement).style.filter = 'url(#ana-node-glow)';
+    // Altitude hierarchy: only entry points and datastores get a drop-shadow,
+    // so the eye lands on where flow starts and where data lives.
+    const raised =
+      nodeEl.classList.contains('entrypoint') || nodeEl.classList.contains('datastore');
+    const baseFilter = raised ? 'url(#ana-node-glow)' : 'none';
+    shape.setAttribute('data-base-filter', baseFilter);
+    (shape as SVGElement).style.filter = baseFilter;
 
     // Rounded corners for rectangles — but leave stadium pills (large rx) alone.
     if (shape.tagName.toLowerCase() === 'rect') {
@@ -556,7 +612,8 @@ function postProcessSvg(svgString: string): string {
     el.setAttribute('stroke', SVG_EDGE_COLOR);
   });
 
-  // --- Edge labels: pill chips ---
+  // --- Edge labels: pill chips (ellipsised so long labels never smear across
+  //     neighbouring edges) ---
   svg.querySelectorAll<SVGElement>('.edgeLabel rect, .edgeLabels rect').forEach((el) => {
     el.setAttribute('fill', '#15151b');
     el.setAttribute('rx', '5');
@@ -571,14 +628,31 @@ function postProcessSvg(svgString: string): string {
     el.style.fill = SVG_EDGE_LABEL;
     el.style.background = 'transparent';
   });
+  svg.querySelectorAll<SVGElement & HTMLElement>('.edgeLabel span').forEach((el) => {
+    el.style.display = 'inline-block';
+    el.style.maxWidth = '140px';
+    el.style.overflow = 'hidden';
+    el.style.textOverflow = 'ellipsis';
+    el.style.whiteSpace = 'nowrap';
+  });
 
-  // --- Subgraph containers: titled cards ---
-  svg.querySelectorAll<SVGElement>('.cluster rect').forEach((el) => {
-    el.setAttribute('fill', '#121217');
-    el.setAttribute('stroke', '#2C2C3A');
-    el.setAttribute('stroke-width', '1.25');
-    el.setAttribute('rx', '14');
-    el.setAttribute('ry', '14');
+  // --- Subgraph containers: layer cards, tinted per cluster so adjacent
+  //     layers read as distinct bands ---
+  const clusterTints = [
+    { fill: '#12141C', stroke: '#2C3040' },
+    { fill: '#14121A', stroke: '#332C40' },
+    { fill: '#101715', stroke: '#293B33' },
+    { fill: '#171310', stroke: '#403428' },
+  ];
+  svg.querySelectorAll<SVGElement>('.cluster').forEach((cluster, i) => {
+    const tint = clusterTints[i % clusterTints.length]!;
+    cluster.querySelectorAll<SVGElement>('rect').forEach((el) => {
+      el.setAttribute('fill', tint.fill);
+      el.setAttribute('stroke', tint.stroke);
+      el.setAttribute('stroke-width', '1.25');
+      el.setAttribute('rx', '14');
+      el.setAttribute('ry', '14');
+    });
   });
   svg.querySelectorAll<SVGElement & HTMLElement>('.cluster .label, .cluster text, .cluster span, .cluster p').forEach((el) => {
     el.style.fill = '#8B92A4';
@@ -715,12 +789,13 @@ export function DiagramPanel({
       el.style.transition = FOCUS_FADE;
       el.style.opacity = dim ? FOCUS_DIM_OPACITY : '';
     });
+    const ids = renderedNodeIds(container);
     container
       .querySelectorAll<SVGElement>('.edgePath path, path.flowchart-link, .flowchart-link')
       .forEach((el) => {
         let dim = false;
         if (keep !== null && subjectId) {
-          const { source, target } = edgeEndpoints(el);
+          const { source, target } = edgeEndpoints(el, ids);
           dim = !(source === subjectId || target === subjectId);
         }
         el.style.transition = FOCUS_FADE;
@@ -890,7 +965,7 @@ export function DiagramPanel({
       const origWidth = shape.getAttribute('data-orig-stroke-width');
       if (orig !== null) shape.setAttribute('stroke', orig);
       if (origWidth !== null) shape.setAttribute('stroke-width', origWidth);
-      shape.style.filter = 'url(#ana-node-glow)';
+      shape.style.filter = shape.getAttribute('data-base-filter') ?? 'none';
     });
 
     if (!activeNodeId) return;
@@ -932,10 +1007,11 @@ export function DiagramPanel({
 
     const naturalW = svgRect.width / scale;
     const naturalH = svgRect.height / scale;
-    // Fill most of the panel, and allow zooming IN (up to 2.6x) so a small,
-    // simple map is shown large and legible rather than tiny in the middle.
+    // Fill most of the panel, and allow zooming IN so a small, simple map is
+    // shown large and legible. Clamp matches the wrapper's minScale/maxScale so
+    // the fit never lands on a scale the user can't reach by hand.
     const fit = Math.min(wrapRect.width / naturalW, wrapRect.height / naturalH) * 0.92;
-    const clamped = Math.max(0.4, Math.min(2.6, fit));
+    const clamped = Math.max(0.3, Math.min(3, fit));
     api.centerView(clamped, animationTime);
   };
 
@@ -1066,8 +1142,11 @@ export function DiagramPanel({
             minScale={0.3}
             maxScale={3}
             centerOnInit
-            wheel={{ step: 0.08 }}
-            doubleClick={{ disabled: false, step: 0.5 }}
+            wheel={{ step: 0.15 }}
+            pinch={{ step: 5 }}
+            // Double-click re-fits the whole map instead of blind-zooming —
+            // the one-gesture escape hatch when you're lost in a zoom.
+            doubleClick={{ disabled: true }}
           >
             {/* contentClass sizes to the SVG's intrinsic box (not 100%) so the
                 diagram has a real size to be centered/fit against. */}
@@ -1077,6 +1156,7 @@ export function DiagramPanel({
                 role="img"
                 aria-label="Architecture diagram"
                 className={fadeClass}
+                onDoubleClick={fitToPanel}
                 dangerouslySetInnerHTML={{ __html: svg }}
               />
             </TransformComponent>

@@ -20,6 +20,24 @@ create table if not exists repos (
 -- Idempotent add for databases created before architecture_summary existed.
 alter table repos add column if not exists architecture_summary text;
 
+-- Structured whole-repo analysis (modules, import edges, entry points) built at
+-- index time and fed to canonical diagram generation.
+alter table repos add column if not exists module_map jsonb;
+
+-- Frozen diagram artifacts (canonical overviews + per-subject detail maps).
+-- Persisted so the same diagram is served across sessions and backend restarts;
+-- replaced only on re-index.
+create table if not exists repo_diagrams (
+  id         uuid primary key default gen_random_uuid(),
+  repo_id    uuid not null references repos (id) on delete cascade,
+  cache_key  text not null,   -- 'overview:basic' | 'overview:deep' | 'detail:<subject>'
+  payload    jsonb not null,  -- full DiagramPayload (mermaid + highlightedNodes)
+  created_at timestamptz not null default now(),
+  unique (repo_id, cache_key)
+);
+
+create index if not exists repo_diagrams_repo_idx on repo_diagrams (repo_id);
+
 -- One row per embedded chunk. text-embedding-3-small is 1536-dim.
 create table if not exists chunks (
   id          uuid primary key default gen_random_uuid(),

@@ -9,7 +9,9 @@ import type {
   DiagramPayload,
   IntentClassification,
   Mode,
+  ModuleMap,
   RetrievedChunk,
+  ScaffoldResult,
 } from '../lib/types.js';
 
 // Models per spec §5.2. Haiku for classification, Sonnet for reasoning.
@@ -47,10 +49,15 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "wantsDiagram": true | false,
   "diagramScope": "overview | focus | detail | null",
   "diagramSubject": "<component/file/API name for focus or detail, else null>",
-  "diagramDepth": "basic | deep"
+  "diagramDepth": "basic | deep",
+  "createProject": true | false,
+  "projectName": "<the name the user gave the new project, else null>",
+  "runAction": "launch | stop | null"
 }
 
 Rules:
+- Set "createProject" to true when the user asks to START A BRAND-NEW project, app, or site — "start a new project (called X)", "create a new app", "make me a website from scratch", "build me a calculator" when the conversation shows no existing project is being edited. It is false for changes to existing code ("add a button", "fix the header"). When true and the user named the project, put that name in "projectName" (else null).
+- Set "runAction" to "launch" when the user asks to run, open, launch, start up, or see the project working ("run it", "show me", "open it", "let me see it", "start it up"). Set it to "stop" when they ask to stop or kill it ("stop it", "kill it", "shut it down"). Otherwise null. These utterances are NOT Build — do not classify them as code changes.
 - Set "undo" to true when the user is asking to undo, revert, take back, or roll back the last change ("undo that", "revert it", "go back"). Otherwise set it to false.
 - Set "redo" to true when the user is asking to redo or re-apply a change they just undid ("redo that", "redo the change", "put it back", "do it again"). Otherwise set it to false.
 - Choose "Understand" when the user wants to know what the codebase does or how something works.
@@ -458,6 +465,9 @@ export async function generateArchitectureSummary(params: {
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
     max_tokens: 600,
+    // Deterministic: the summary feeds diagram generation, so it must not drift
+    // between runs over the same inputs.
+    temperature: 0,
     system: [
       {
         type: 'text',
@@ -469,6 +479,80 @@ export async function generateArchitectureSummary(params: {
   });
 
   return blockText(message);
+}
+
+// Static system prompt for one-sentence module role summaries (cached).
+const MODULE_SUMMARY_SYSTEM_PROMPT = `You are analysing one module (a directory) of a software repository.
+
+From the module's path, its file list, and the first lines of a few key files, write ONE sentence describing what this module does and its architectural role (e.g. "Fastify HTTP routes that validate input and delegate to services").
+
+Rules:
+- Exactly one sentence, under 25 words, plain English.
+- Be specific to what the files actually show; never guess features.
+- No markdown, no quotes, no preamble — just the sentence.`;
+
+const MODULE_SUMMARY_CONCURRENCY = 4;
+const MAX_SUMMARIZED_MODULES = 20;
+
+/**
+ * Fill in one-sentence role summaries for the largest modules in the map
+ * (Haiku, temperature 0, run at index time). Mutates and returns the map.
+ * Individual failures leave that module's summary undefined — never throws.
+ */
+export async function generateModuleSummaries(
+  map: ModuleMap,
+  getHead: (path: string) => string | undefined,
+): Promise<ModuleMap> {
+  const targets = [...map.modules]
+    .sort((a, b) => b.fileCount - a.fileCount || a.id.localeCompare(b.id))
+    .slice(0, MAX_SUMMARIZED_MODULES);
+
+  const summarize = async (moduleInfo: (typeof targets)[number]): Promise<void> => {
+    const headSections = moduleInfo.keyFiles
+      .slice(0, 3)
+      .map((p) => {
+        const head = getHead(p);
+        return head ? `--- ${p} (first lines) ---\n${head}` : null;
+      })
+      .filter((s): s is string => s !== null);
+    const content = [
+      `Module path: ${moduleInfo.path || '(repo root)'}`,
+      `Files (${moduleInfo.fileCount}): ${moduleInfo.keyFiles.join(', ')}`,
+      ...headSections,
+    ].join('\n\n');
+
+    const message = await getClient().messages.create({
+      model: CLASSIFY_MODEL,
+      max_tokens: 100,
+      temperature: 0,
+      system: [
+        {
+          type: 'text',
+          text: MODULE_SUMMARY_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content }],
+    });
+    const summary = blockText(message);
+    if (summary) moduleInfo.summary = summary;
+  };
+
+  // Bounded concurrency; a failed summary is logged and skipped.
+  for (let i = 0; i < targets.length; i += MODULE_SUMMARY_CONCURRENCY) {
+    const batch = targets.slice(i, i + MODULE_SUMMARY_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map(summarize));
+    for (let j = 0; j < results.length; j += 1) {
+      const r = results[j]!;
+      if (r.status === 'rejected') {
+        console.error(
+          `[claude] module summary failed for ${batch[j]!.id}:`,
+          r.reason instanceof Error ? r.reason.message : r.reason,
+        );
+      }
+    }
+  }
+  return map;
 }
 
 // The shared node-type system every diagram prompt must follow so the renderer's
@@ -495,19 +579,33 @@ const DIAGRAM_RESPONSE_FORMAT = `Response format — return only this JSON, no p
   }
 }`;
 
+// Shared output contract for both overview depths. Strict on purpose: stable
+// IDs + fixed direction + typed nodes make the output reproducible at
+// temperature 0 and let the renderer's post-processing (icons, colours,
+// layers) work every time.
+const OVERVIEW_CONTRACT_RULES = `Output contract (follow EXACTLY):
+- Start with "flowchart LR". Never any other direction or diagram type.
+- When a module map is provided, node IDs MUST be the module ids from the map, used verbatim (e.g. apps_backend_src_services). One node may represent several merged modules — use the id of the most important one. For datastores/external services not in the map, derive a snake_case id from the service name (e.g. supabase_db, tavus_api).
+- Node labels: short human names, 2-4 words, Title Case. NO parentheses, brackets, backticks, or slashes inside the label text.
+- Group nodes into Mermaid subgraphs representing ARCHITECTURAL LAYERS, chosen by each module's role (from its summary) — e.g. Client Layer, API Layer, Services, Data & External. Never group by directory nesting alone. Subgraph syntax: subgraph layer_id["Layer Name"] ... end.
+- Only draw an edge where the module map lists an import edge between those modules, or where an obvious runtime dependency exists (a service calling its database or an external API). Never invent connections.
+- EVERY edge carries a 1-3 word label: -->|stores data in|, -->|calls|, -->|serves|.
+- Do not emit classDef, style, linkStyle, or click lines — the renderer owns all styling.
+- Output the mermaid inside the JSON only. No markdown fences.`;
+
 // BASIC overview — the default. A deliberately SIMPLE, high-level map a
 // non-technical person can read at a glance. Generated once at index time.
 const OVERVIEW_BASIC_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a SIMPLE, high-level map of an entire software project for a NON-TECHNICAL person. This is the default overview, so keep it easy to read at a glance — not exhaustive.
 
-You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+You will receive the repo name, a plain-language architecture overview, the repository file structure, and (when available) a MODULE MAP: the project's real modules with one-line role summaries, the import edges between them, and its entry points. The module map is the ground truth — prefer it over guessing from the file structure. Do not invent parts that are not evidenced by the inputs.
 
 Keep it BASIC:
-- Use "graph TD".
-- Show only the few BIG pieces of the project — aim for 4 to 7 nodes, never more than 8. Collapse related files/folders into one node (e.g. one "Backend API", one "Desktop App", one "Database"), rather than listing internals.
+- Show only the few BIG pieces of the project — 5 to 8 nodes total. Merge related modules into one node (e.g. one "Backend API", one "Desktop App", one "Database"), rather than listing internals.
 - Do NOT show individual files, functions, or routes. This is the 30,000-foot view.
-- Do NOT use subgraphs. Keep it flat and simple.
+- Use at most 2 subgraph layers, or none if the project is small.
 - Use friendly real names from the project. Avoid jargon where a plainer word works.
-- Connect the pieces with a few clear edges showing how they relate, labelled simply ("talks to", "stores data in", "calls").
+
+${OVERVIEW_CONTRACT_RULES}
 
 ${NODE_TYPE_RULES}
 
@@ -523,18 +621,15 @@ ${DIAGRAM_RESPONSE_FORMAT}`;
 // the whole architecture. Comprehensive and grouped.
 const OVERVIEW_DEEP_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a DETAILED, in-depth map of an entire software project. The user explicitly asked for the full picture, so be comprehensive and well-organised.
 
-You will receive a plain-language architecture overview, the repository file structure, and the repo name. Build the diagram from these. Do not invent parts that are not evidenced by the inputs.
+You will receive the repo name, a plain-language architecture overview, the repository file structure, and (when available) a MODULE MAP: the project's real modules with one-line role summaries, the import edges between them, and its entry points. The module map is the ground truth — every node should correspond to one or more of its modules (or a datastore/external service the project uses). Do not invent parts that are not evidenced by the inputs.
 
 Diagram rules:
-- Use "graph TD".
 - Show the major real parts: entry points (UI/CLI), the main services / API areas / modules, datastores, and third-party APIs the project calls — and how they connect.
-- Use real names from the structure and overview (folders, services, apps, packages). No bare generic labels like "Module" or "Layer".
-- Group related nodes with Mermaid subgraphs labelled by the folder/area they belong to when there are more than 6 nodes.
-- Aim for the most important 10–16 nodes. Prefer a complete-but-readable map over an exhaustive one.
+- 12 to 18 nodes. Prefer a complete-but-readable map over an exhaustive one; merge trivial modules into their parent area.
+- Use 2 to 4 subgraph layers.
+- Use real names from the module map and overview. No bare generic labels like "Module" or "Layer".
 
-Edge rules:
-- Every edge represents a real relationship evidenced by the structure/overview — a call, an import, a data read/write, an external API call.
-- Label edges where the relationship type matters: "calls", "writes to", "reads from", "serves".
+${OVERVIEW_CONTRACT_RULES}
 
 ${NODE_TYPE_RULES}
 
@@ -558,18 +653,23 @@ export async function generateOverviewDiagram(params: {
   structure: string;
   architectureSummary: string;
   depth?: DiagramDepth;
+  /** Serialized module map (serializeModuleMap) — the whole-repo ground truth. */
+  moduleMap?: string;
 }): Promise<DiagramPayload> {
-  const { repoFullName, structure, architectureSummary, depth = 'basic' } = params;
+  const { repoFullName, structure, architectureSummary, depth = 'basic', moduleMap } = params;
 
   const contextParts = [
     `Repository: ${repoFullName}`,
     `Architecture overview:\n${architectureSummary || '(none provided)'}`,
+    `Module map:\n${moduleMap || '(no module map available — fall back to the file structure)'}`,
     `File structure:\n${structure}`,
   ];
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
     max_tokens: 1500,
+    // The canonical overview must be reproducible over identical inputs.
+    temperature: 0,
     system: [
       {
         type: 'text',
@@ -590,13 +690,15 @@ export async function generateOverviewDiagram(params: {
 // INTO — it never mutates the canonical overview.
 const DETAIL_DIAGRAM_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. Produce a focused deep-dive diagram of ONE component of a software project, for a curious user who wants to see how that one part works inside.
 
-You will receive the component's name and code chunks retrieved from the repo (each labelled with its file path). Build the diagram only from what these chunks evidence. Do not invent parts.
+You will receive the component's name, code chunks retrieved from the repo (each labelled with its file path), and (when available) the relevant slice of the project's module map — the component's module, its import edges, and its neighbours' roles. Build the diagram only from what these inputs evidence. Do not invent parts.
 
 Diagram rules:
-- Use "graph TD".
+- Start with "flowchart LR". Never any other direction or diagram type.
 - Centre the diagram on the named component and show its INTERNALS — the real files, functions, routes, handlers, or sub-modules that make it up — plus the things it directly connects to (the datastores it uses and the external/other services it calls).
-- Use real names from the code. No generic labels like "Module" or "Service" on their own.
+- Use real names from the code. No generic labels like "Module" or "Service" on their own. Labels 2-4 words, no parentheses, brackets, backticks, or slashes inside label text.
+- Node IDs: snake_case derived from the real file/function name (e.g. turn_service, diagram_cache).
 - Limit to the 12 most relevant nodes. If the component is larger, show the most important pieces and say so in spoken.
+- Do not emit classDef, style, linkStyle, or click lines — the renderer owns all styling.
 
 Edge rules:
 - Every edge is a real relationship from the chunks — a call, an import, a data read/write, an external call.
@@ -637,17 +739,22 @@ Response format — return only this JSON, no preamble:
 export async function generateDetailDiagram(params: {
   subject: string;
   chunks: RetrievedChunk[];
+  /** Compact module-map slice for the subject (module, edges, neighbours). */
+  moduleContext?: string;
 }): Promise<DiagramPayload> {
-  const { subject, chunks } = params;
+  const { subject, chunks, moduleContext } = params;
 
   const contextParts = [
     `Component to explain in depth: ${subject}`,
+    `Module map context:\n${moduleContext || '(none available)'}`,
     `Retrieved code chunks:\n${formatChunks(chunks)}`,
   ];
 
   const message = await getClient().messages.create({
     model: REASONING_MODEL,
     max_tokens: 1500,
+    // Cached per subject; must be reproducible if regenerated after a restart.
+    temperature: 0,
     system: [
       {
         type: 'text',
@@ -742,6 +849,93 @@ export async function generateBuildResponse(params: {
     throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return any edits.');
   }
   return toolUse.input as BuildEditResponse;
+}
+
+// --- New-project scaffolding ---------------------------------------------------
+
+const SCAFFOLD_SYSTEM_PROMPT = `You are Ana, a voice-first AI coding partner. The user asked you to create a BRAND-NEW project from scratch. Design a small, complete, working project that fulfils their request.
+
+Always respond by calling the submit_scaffold tool. Its fields:
+- projectName: kebab-case, 2-4 words, only [a-z0-9-] (it becomes the GitHub repo name). Derive it from the user's request (use their name for it if they gave one).
+- description: one sentence describing the project (becomes the GitHub repo description).
+- spoken: 1-2 plain conversational sentences describing what you built — no jargon, no file names.
+- files: every file in the project, each with its complete contents (never diffs or placeholders).
+
+Project rules:
+- At most 15 files. Prefer FEWER, well-crafted files.
+- The project MUST be runnable: either a root index.html that works when opened directly in a browser (preferred for simple apps — no build step, no dependencies), or a root package.json with a "dev" or "start" script using a light stack like Vite.
+- Prefer plain HTML/CSS/JS with no dependencies whenever the request allows it. Only reach for package.json/Vite when the request genuinely needs it.
+- Always include a short README.md (project name, what it does, how to run it).
+- Make it polished: real styling, sensible layout, working logic — this is the user's first impression of their new project.
+- Never include .env files, keys/certificates, node_modules, lockfiles, or binary files.
+- All paths are relative to the project root; no leading ./ or /.`;
+
+const SCAFFOLD_TOOL: Anthropic.Tool = {
+  name: 'submit_scaffold',
+  description: 'Submit the new project: name, description, spoken summary, and all files.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      projectName: { type: 'string', description: 'kebab-case repo-safe name, [a-z0-9-] only.' },
+      description: { type: 'string', description: 'One sentence for the GitHub repo description.' },
+      spoken: { type: 'string', description: "Ana's spoken summary — 1-2 plain sentences." },
+      files: {
+        type: 'array',
+        description: 'Every file in the new project, complete contents.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Relative path from the project root.' },
+            contents: { type: 'string', description: 'Complete file contents.' },
+            summary: { type: 'string', description: 'One sentence on what this file is.' },
+          },
+          required: ['path', 'contents', 'summary'],
+        },
+      },
+    },
+    required: ['projectName', 'description', 'spoken', 'files'],
+  },
+};
+
+/** Generate a complete new-project scaffold from the user's spoken request. */
+export async function generateScaffold(params: {
+  transcript: string;
+  history: ConversationTurn[];
+}): Promise<ScaffoldResult> {
+  const { transcript, history } = params;
+
+  const message = await getClient().messages.create({
+    model: REASONING_MODEL,
+    max_tokens: 16000,
+    system: [
+      {
+        type: 'text',
+        text: SCAFFOLD_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    tools: [SCAFFOLD_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_scaffold' },
+    messages: [
+      {
+        role: 'user',
+        content: `Recent conversation:\n${formatHistory(history)}\n\nUser request: ${transcript}`,
+      },
+    ],
+  });
+
+  const toolUse = message.content.find((b) => b.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return a scaffold.');
+  }
+  const scaffold = toolUse.input as ScaffoldResult;
+  // Enforce a repo-safe name even if the model drifts from the contract.
+  scaffold.projectName = (scaffold.projectName ?? 'new-project')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'new-project';
+  return scaffold;
 }
 
 /**

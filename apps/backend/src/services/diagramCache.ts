@@ -1,11 +1,12 @@
-// In-memory cache of frozen diagram artifacts, keyed by repo. Each artifact is
-// generated once — the overview at index time, detail maps on first request —
-// and then reused byte-for-byte, so re-asking for the same view never redraws
-// and never drifts into a different architecture. Nothing is persisted: the
-// cache lives for the process lifetime and is cleared per repo on re-index.
-//
-// Modeled on services/history.ts (a plain in-memory Map, no external state).
+// Read-through cache of frozen diagram artifacts, keyed by repo. Each artifact
+// is generated once — the overviews at index time, detail maps on first request
+// — then reused byte-for-byte, so re-asking for the same view never redraws and
+// never drifts into a different architecture. Artifacts are persisted in the
+// repo_diagrams table so they survive backend restarts (a restart used to
+// re-roll the overview into a different map); the in-memory Map in front keeps
+// the voice path off the DB. Cleared per repo on re-index.
 
+import { getSupabase } from '../db/client.js';
 import type { DiagramDepth, DiagramPayload } from '../lib/types.js';
 
 /** The two kinds of cached diagram. 'overview' is the canonical whole-repo map
@@ -32,37 +33,86 @@ function keyFor(kind: DiagramKind, parts: DiagramKeyParts): string {
   return `detail:${normalizeSubject(parts.subject)}`;
 }
 
-/** Fetch a cached diagram, or null if it hasn't been generated yet. */
-export function getDiagram(
-  repoId: string,
-  kind: DiagramKind,
-  parts: DiagramKeyParts = {},
-): DiagramPayload | null {
-  return cache.get(repoId)?.get(keyFor(kind, parts)) ?? null;
-}
-
-/** Store a freshly generated diagram so every later request reuses it verbatim. */
-export function setDiagram(
-  repoId: string,
-  kind: DiagramKind,
-  parts: DiagramKeyParts,
-  payload: DiagramPayload,
-): void {
+function remember(repoId: string, cacheKey: string, payload: DiagramPayload): void {
   let repoCache = cache.get(repoId);
   if (!repoCache) {
     repoCache = new Map<string, DiagramPayload>();
     cache.set(repoId, repoCache);
   }
-  repoCache.set(keyFor(kind, parts), payload);
+  repoCache.set(cacheKey, payload);
 }
 
-/** True once the basic overview has been generated for this repo. */
-export function hasOverview(repoId: string): boolean {
-  return cache.get(repoId)?.has('overview:basic') ?? false;
+/**
+ * Fetch a cached diagram: memory first, then the repo_diagrams row (hydrating
+ * memory on a hit). Null if it hasn't been generated yet. Never throws — a DB
+ * failure just reads as a miss.
+ */
+export async function getDiagram(
+  repoId: string,
+  kind: DiagramKind,
+  parts: DiagramKeyParts = {},
+): Promise<DiagramPayload | null> {
+  const cacheKey = keyFor(kind, parts);
+  const inMemory = cache.get(repoId)?.get(cacheKey);
+  if (inMemory) return inMemory;
+
+  try {
+    const { data, error } = await getSupabase()
+      .from('repo_diagrams')
+      .select('payload')
+      .eq('repo_id', repoId)
+      .eq('cache_key', cacheKey)
+      .maybeSingle();
+    const payload = data?.payload as DiagramPayload | null | undefined;
+    if (error || !payload?.mermaid) return null;
+    remember(repoId, cacheKey, payload);
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
-/** Drop every cached diagram for a repo — called when the repo is re-indexed so
- *  stale maps don't outlive the code they describe. */
-export function invalidateRepo(repoId: string): void {
+/**
+ * Store a freshly generated diagram so every later request — this session or
+ * the next — reuses it verbatim. The memory write is immediate; the DB upsert
+ * is awaited so index-time generation is durable, but a DB failure only logs
+ * (the in-memory copy still serves this process).
+ */
+export async function setDiagram(
+  repoId: string,
+  kind: DiagramKind,
+  parts: DiagramKeyParts,
+  payload: DiagramPayload,
+): Promise<void> {
+  const cacheKey = keyFor(kind, parts);
+  remember(repoId, cacheKey, payload);
+  try {
+    const { error } = await getSupabase()
+      .from('repo_diagrams')
+      .upsert(
+        { repo_id: repoId, cache_key: cacheKey, payload },
+        { onConflict: 'repo_id,cache_key' },
+      );
+    if (error) throw new Error(error.message);
+  } catch (err) {
+    console.error(
+      `[diagramCache] persist failed for ${cacheKey}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/** Drop every cached diagram for a repo — memory and DB — called when the repo
+ *  is re-indexed so stale maps don't outlive the code they describe. */
+export async function invalidateRepo(repoId: string): Promise<void> {
   cache.delete(repoId);
+  try {
+    const { error } = await getSupabase().from('repo_diagrams').delete().eq('repo_id', repoId);
+    if (error) throw new Error(error.message);
+  } catch (err) {
+    console.error(
+      '[diagramCache] invalidate failed:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }

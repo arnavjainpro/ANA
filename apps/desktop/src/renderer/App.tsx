@@ -81,6 +81,129 @@ async function handleVoiceRedo(): Promise<void> {
   speakViaTavus(spoken);
 }
 
+/** Speak a line and record it in the conversation history. */
+function say(line: string): void {
+  useConversationStore.getState().pushAssistant(line);
+  speakViaTavus(line);
+}
+
+// Lines Ana speaks while project:create's stages run, so the wait never goes quiet.
+const CREATE_STAGE_LINES: Record<string, string> = {
+  writing: 'Writing the files now…',
+  committing: 'Saving the first version…',
+  'creating-repo': 'Creating it on GitHub…',
+  pushing: 'Pushing your code up…',
+};
+
+/**
+ * A spoken "build me X" with no repo (or an explicit "start a new project"):
+ * scaffold → user picks a parent folder → files + git + GitHub repo + push →
+ * connect + index the new repo → launch it on screen.
+ */
+async function handleVoiceCreateProject(
+  transcript: string,
+  history: ConversationTurn[],
+): Promise<void> {
+  const scaffold = await window.ana.project.scaffold(transcript, history);
+  if (isIpcError(scaffold)) {
+    say("I couldn't put that project together — want to try describing it again?");
+    return;
+  }
+
+  say(`${scaffold.spoken} Pick a folder where I should put it.`);
+  const picked = await window.ana.project.selectParentDir(scaffold.projectName);
+  if (isIpcError(picked)) {
+    if (picked.error === 'cancelled') {
+      say('No problem — just ask again when you want me to create it.');
+    } else {
+      say(picked.error);
+    }
+    return;
+  }
+
+  const unsubscribe = window.ana.project.onProgress((p) => {
+    const line = CREATE_STAGE_LINES[p.stage];
+    if (line) speakViaTavus(line);
+  });
+  const login = useRepoStore.getState().login;
+  const result = await window.ana.project.create({ scaffold, parentDir: picked.parentDir, login });
+  unsubscribe();
+
+  if (isIpcError(result)) {
+    say(result.error);
+    return;
+  }
+
+  // Make the new project the connected repo.
+  const repoState = useRepoStore.getState();
+  repoState.setRepos([result.repo, ...repoState.repos.filter((r) => r.id !== result.repo.id)]);
+  repoState.selectRepo(result.repo);
+  await useBuildStore.getState().ensureRepoPath(result.repo.full_name);
+  useUiStore.getState().setActiveMode('Build');
+
+  if (result.warning) {
+    say(
+      `${scaffold.projectName} is ready on your computer, but I couldn't push it to GitHub yet — we can retry that later. Let me show you.`,
+    );
+  } else {
+    say(`${scaffold.projectName} is live on GitHub. Let me show you.`);
+    // Index in the background so Ana can answer questions about the new code.
+    void window.ana.repo.index(result.repo.full_name).then((done) => {
+      if (isIpcError(done)) return;
+      useRepoStore.getState().setRepoId(done.repoId);
+      void window.ana.conversation.syncRepo({
+        repoId: done.repoId,
+        repoFullName: result.repo.full_name,
+      });
+    });
+  }
+
+  await handleVoiceRun('launch');
+}
+
+/** A spoken "run it / show me" or "stop it" for the current project. */
+async function handleVoiceRun(action: 'launch' | 'stop'): Promise<void> {
+  const build = useBuildStore.getState();
+  let repoPath = build.repoPath;
+  if (!repoPath) {
+    const fullName = useRepoStore.getState().selectedRepo?.full_name;
+    if (fullName) {
+      await build.ensureRepoPath(fullName);
+      repoPath = useBuildStore.getState().repoPath;
+    }
+  }
+  if (!repoPath) {
+    say("I don't have a local project open to run yet.");
+    return;
+  }
+
+  if (action === 'stop') {
+    await window.ana.run.stop(repoPath);
+    say("Okay, I've stopped it.");
+    return;
+  }
+
+  const unsubscribe = window.ana.run.onProgress((p) => {
+    if (p.stage === 'installing') {
+      speakViaTavus('Installing what it needs — this can take a minute or two.');
+    } else if (p.stage === 'starting') {
+      speakViaTavus('Starting it up…');
+    }
+  });
+  const result = await window.ana.run.launch(repoPath);
+  unsubscribe();
+
+  if (isIpcError(result)) {
+    say(result.error);
+  } else if (result.kind === 'static') {
+    say('Opening the page for you.');
+  } else if (result.url) {
+    say('There it is — opening in your browser.');
+  } else {
+    say("It's running, but I couldn't find its page — check your browser at localhost.");
+  }
+}
+
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
@@ -128,6 +251,14 @@ export default function App(): JSX.Element {
       }
       if (evt.type === 'redo-request') {
         void handleVoiceRedo();
+        return;
+      }
+      if (evt.type === 'create-project-request') {
+        void handleVoiceCreateProject(evt.transcript, evt.history);
+        return;
+      }
+      if (evt.type === 'run-request') {
+        void handleVoiceRun(evt.action);
         return;
       }
       setActiveMode(evt.mode);

@@ -46,6 +46,47 @@ export interface IntentClassification {
    * Ignored for focus/detail scopes (a part is always shown in depth).
    */
   diagramDepth?: DiagramDepth;
+  /**
+   * True when the user asks to start a brand-NEW project/app/site ("start a new
+   * project called X", or "build me a calculator" with nothing connected) —
+   * as opposed to editing existing code.
+   */
+  createProject?: boolean;
+  /** The name the user gave the new project, else null. */
+  projectName?: string | null;
+  /** "run it / show me / open it" → 'launch'; "stop it / kill it" → 'stop'. */
+  runAction?: 'launch' | 'stop' | null;
+}
+
+// --- Project creation (Ana scaffolds + publishes a brand-new repo) -------------
+
+/** One complete new file in a project scaffold (never a diff). */
+export interface ScaffoldFile {
+  path: string;
+  contents: string;
+  summary: string;
+}
+
+/** The structured scaffold response for a new project. */
+export interface ScaffoldResult {
+  /** kebab-case, GitHub-safe project name. */
+  projectName: string;
+  /** One-line description used for the GitHub repo. */
+  description: string;
+  /** Ana's spoken summary of what she built. */
+  spoken: string;
+  files: ScaffoldFile[];
+}
+
+/** A repository freshly created on GitHub via the API. */
+export interface CreatedRepo {
+  id: number;
+  full_name: string;
+  default_branch: string;
+  private: boolean;
+  size: number;
+  owner: string;
+  htmlUrl: string;
 }
 
 /** A single turn of conversation, oldest first. */
@@ -206,6 +247,44 @@ export interface TurnRequest {
   filePath?: string;
   /** Manual mode override from the UI; intent classification still runs. */
   forcedMode?: Mode;
+}
+
+// --- Module map (structured whole-repo analysis, built at index time) ---------
+
+/** One collapsed module (a directory subtree) in the repo's module map. */
+export interface ModuleInfo {
+  /** Stable snake_case id derived from the path, e.g. apps_backend_src_services. */
+  id: string;
+  /** Directory path from the repo root; '' for the repo root itself. */
+  path: string;
+  fileCount: number;
+  isEntrypoint: boolean;
+  /** One-sentence role summary (filled by Haiku at index time; may be absent). */
+  summary?: string;
+  /** Up to ~8 representative files inside the module. */
+  keyFiles: string[];
+}
+
+/** A module-level import/dependency edge, aggregated from file imports. */
+export interface ModuleEdge {
+  from: string;
+  to: string;
+  count: number;
+}
+
+/**
+ * The structured whole-repo analysis generated at index time: modules with
+ * summaries, import edges between them, and entry points. Persisted on the
+ * repos row (module_map jsonb) and fed to diagram generation so the canonical
+ * overview reflects the entire codebase, not a handful of RAG chunks.
+ */
+export interface ModuleMap {
+  version: 1;
+  generatedAt: string;
+  modules: ModuleInfo[];
+  edges: ModuleEdge[];
+  /** Entry-point file paths (package.json main/bin, index/main files, …). */
+  entryPoints: string[];
 }
 
 /** A retrieved RAG chunk with its source path. */

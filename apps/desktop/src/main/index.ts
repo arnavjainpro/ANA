@@ -13,6 +13,8 @@ import { registerFilesystemIpc } from './ipc/filesystem.js';
 import { registerGitIpc } from './ipc/git.js';
 import { registerBuildIpc } from './ipc/build.js';
 import { registerWindowIpc, registerPopupShortcut, resetWindowMode } from './ipc/window.js';
+import { registerProjectIpc } from './ipc/project.js';
+import { registerRunIpc, stopAllRuns } from './ipc/run.js';
 
 // Vite-plugin-electron injects these env vars in dev.
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -127,6 +129,8 @@ if (!gotLock) {
     registerGitIpc();
     registerBuildIpc();
     registerWindowIpc(() => mainWindow);
+    registerProjectIpc(() => mainWindow);
+    registerRunIpc(() => mainWindow);
     createWindow();
     registerPopupShortcut(() => mainWindow);
 
@@ -147,6 +151,8 @@ if (!gotLock) {
   // consume one of the account's concurrent-conversation slots.
   let cleaningUp = false;
   app.on('before-quit', (event) => {
+    // Kill any dev servers Ana launched so they don't outlive the app.
+    stopAllRuns();
     if (cleaningUp || !hasActiveConversation()) return;
     event.preventDefault();
     cleaningUp = true;

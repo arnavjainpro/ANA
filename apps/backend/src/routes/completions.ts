@@ -16,6 +16,8 @@ import {
   publishBuildRequest,
   publishUndoRequest,
   publishRedoRequest,
+  publishCreateProjectRequest,
+  publishRunRequest,
 } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
 import type { ConversationTurn, IntentClassification } from '../lib/types.js';
@@ -47,6 +49,18 @@ const REDO_ACKS = ['Sure, redoing that.', 'Okay, putting that back.', 'Got it, r
 
 function pickRedoAck(): string {
   return REDO_ACKS[Math.floor(Math.random() * REDO_ACKS.length)] ?? REDO_ACKS[0];
+}
+
+// Spoken while the desktop scaffolds a brand-new project; the flow continues
+// speaking from the renderer (folder pick, progress, launch).
+const CREATE_ACKS = [
+  "Fun — let's start something new. Give me a moment to put it together.",
+  'Love it. Let me draft that project for you now.',
+  "Okay, let's build that from scratch — one moment.",
+] as const;
+
+function pickCreateAck(): string {
+  return CREATE_ACKS[Math.floor(Math.random() * CREATE_ACKS.length)] ?? CREATE_ACKS[0];
 }
 
 /** OpenAI-compatible chat message (the shape Tavus sends). */
@@ -207,6 +221,25 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
         } else if (intent.redo) {
           publishRedoRequest();
           reply.raw.write(chunkLine(base, { content: pickRedoAck() }, null));
+        } else if (intent.createProject) {
+          // An explicit "start a new project" always creates a fresh one, even
+          // with a repo already connected.
+          publishCreateProjectRequest(transcript, history);
+          reply.raw.write(chunkLine(base, { content: pickCreateAck() }, null));
+        } else if (intent.runAction) {
+          publishRunRequest(intent.runAction);
+          reply.raw.write(
+            chunkLine(
+              base,
+              {
+                content:
+                  intent.runAction === 'launch'
+                    ? 'Sure — let me open that up for you.'
+                    : 'Okay, stopping it.',
+              },
+              null,
+            ),
+          );
         } else if (intent.mode === 'Build') {
           publishBuildRequest(transcript, history);
           reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));
@@ -227,10 +260,20 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
           }
         }
       } else {
-        // No repo connected/indexed yet — guide the user through connecting one
-        // instead of answering blindly about code Ana cannot see.
-        const response = await generateNoRepoReply({ utterance: transcript, history });
-        reply.raw.write(chunkLine(base, { content: response.spoken }, null));
+        // No repo connected/indexed yet. Classify in parallel with the guidance
+        // reply (no added latency): a Build/new-project ask becomes a
+        // create-project flow instead of the "connect a repo" nudge; anything
+        // else gets the nudge as before. A classify failure degrades gracefully.
+        const [intent, noRepo] = await Promise.all([
+          classifyIntent(transcript, history).catch(() => null),
+          generateNoRepoReply({ utterance: transcript, history }),
+        ]);
+        if (intent && (intent.createProject || intent.mode === 'Build')) {
+          publishCreateProjectRequest(transcript, history);
+          reply.raw.write(chunkLine(base, { content: pickCreateAck() }, null));
+        } else {
+          reply.raw.write(chunkLine(base, { content: noRepo.spoken }, null));
+        }
       }
     } catch (err) {
       // Never leave Tavus hanging — speak the fallback instead.

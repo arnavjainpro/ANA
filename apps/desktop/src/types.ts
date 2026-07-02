@@ -105,12 +105,74 @@ export interface RedoRequestEvent {
   type: 'redo-request';
 }
 
+/** A spoken request to create a brand-new project (scaffold → GitHub → launch). */
+export interface CreateProjectRequestEvent {
+  type: 'create-project-request';
+  transcript: string;
+  history: ConversationTurn[];
+}
+
+/** A spoken request to launch or stop the current project. */
+export interface RunRequestEvent {
+  type: 'run-request';
+  action: 'launch' | 'stop';
+}
+
 /** Events streamed to the desktop from voice (Tavus) turns. */
 export type BusEvent =
   | PanelEvent
   | BuildRequestEvent
   | UndoRequestEvent
-  | RedoRequestEvent;
+  | RedoRequestEvent
+  | CreateProjectRequestEvent
+  | RunRequestEvent;
+
+// --- New-project creation ------------------------------------------------------
+
+/** One complete new file in a project scaffold (never a diff). */
+export interface ScaffoldFile {
+  path: string;
+  contents: string;
+  summary: string;
+}
+
+/** The backend's structured scaffold for a new project. */
+export interface ScaffoldResult {
+  projectName: string;
+  description: string;
+  spoken: string;
+  files: ScaffoldFile[];
+}
+
+/** Result of creating a new project (files + git + GitHub repo). */
+export interface ProjectCreateResult {
+  repoPath: string;
+  repo: RepoSummary;
+  owner: string;
+  htmlUrl: string;
+  /** Set when the project exists locally but the GitHub push failed. */
+  warning?: string;
+}
+
+/** Progress pushed while project:create runs, so Ana can narrate. */
+export interface ProjectProgress {
+  stage: 'writing' | 'committing' | 'creating-repo' | 'pushing';
+  detail?: string;
+}
+
+// --- Launching the user's project ----------------------------------------------
+
+/** Progress pushed while run:launch works, so Ana can narrate slow steps. */
+export interface RunProgress {
+  stage: 'installing' | 'starting' | 'ready' | 'exited';
+  detail?: string;
+}
+
+export interface RunStatus {
+  running: boolean;
+  url: string | null;
+  kind: 'dev-server' | 'static' | null;
+}
 
 // --- Build mode --------------------------------------------------------------
 
@@ -245,6 +307,31 @@ export interface AnaApi {
   };
   git: {
     status: (repoPath: string) => Promise<IpcResult<GitStatus>>;
+  };
+  project: {
+    /** Generate a new-project scaffold from a spoken request (backend Claude call). */
+    scaffold: (transcript: string, history: ConversationTurn[]) => Promise<IpcResult<ScaffoldResult>>;
+    /** Folder picker for WHERE to put the new project (parent directory). */
+    selectParentDir: (projectName: string) => Promise<IpcResult<{ parentDir: string }>>;
+    /** Create the project: write files, git init+commit, GitHub repo, push. */
+    create: (args: {
+      scaffold: ScaffoldResult;
+      parentDir: string;
+      login: string | null;
+    }) => Promise<IpcResult<ProjectCreateResult>>;
+    /** Subscribe to create-progress pushes. Returns an unsubscribe function. */
+    onProgress: (cb: (p: ProjectProgress) => void) => () => void;
+  };
+  run: {
+    /** Launch the project (dev server or static page) and open it on screen. */
+    launch: (
+      repoPath: string,
+    ) => Promise<IpcResult<{ url: string | null; kind: 'dev-server' | 'static' }>>;
+    /** Stop the project's dev server (or all running ones when omitted). */
+    stop: (repoPath?: string) => Promise<IpcResult<{ ok: true }>>;
+    status: (repoPath: string) => Promise<RunStatus>;
+    /** Subscribe to launch-progress pushes. Returns an unsubscribe function. */
+    onProgress: (cb: (p: RunProgress) => void) => () => void;
   };
   window: {
     /** Switch the app window between the full split layout and the floating popup. */

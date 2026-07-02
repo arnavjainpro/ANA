@@ -6,7 +6,7 @@
 // apply time; here we enforce everything that is path/shape based.
 
 import { randomUUID } from 'node:crypto';
-import type { FileEditGroup, FilePatch, ValidationResult } from '../lib/types.js';
+import type { FileEditGroup, FilePatch, ScaffoldFile, ValidationResult } from '../lib/types.js';
 
 /** Hard cap on files touched per operation. */
 const MAX_FILES = 5;
@@ -62,6 +62,55 @@ export async function validatePatches(patches: FilePatch[]): Promise<ValidationR
   }
 
   return { valid: true };
+}
+
+/** New-project scaffolds get a higher cap than Build edits (a fresh project
+ *  legitimately needs more files), with the same path/secret rules. */
+const MAX_SCAFFOLD_FILES = 15;
+
+/**
+ * Validate a new-project scaffold: same path/secret rules as Build, a higher
+ * file cap, and the launchability contract — the project must be runnable
+ * (a root package.json with a dev/start/preview script, or a root index.html).
+ */
+export function validateScaffoldFiles(files: ScaffoldFile[]): ValidationResult {
+  if (files.length === 0) {
+    return { valid: false, reason: 'The scaffold came back empty.' };
+  }
+  if (files.length > MAX_SCAFFOLD_FILES) {
+    return {
+      valid: false,
+      reason: `That project needs ${files.length} files, but a new project can start with at most ${MAX_SCAFFOLD_FILES}.`,
+    };
+  }
+
+  for (const file of files) {
+    if (isUnsafePath(file.path)) {
+      return { valid: false, reason: `I can't write to "${file.path}" — it's outside the project.` };
+    }
+    if (FORBIDDEN_PATTERNS.some((re) => re.test(file.path))) {
+      return {
+        valid: false,
+        reason: `I won't create "${file.path}" — that's a protected configuration or secret file.`,
+      };
+    }
+  }
+
+  const rootPackageJson = files.find((f) => f.path === 'package.json');
+  if (rootPackageJson) {
+    try {
+      const pkg = JSON.parse(rootPackageJson.contents) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.dev || pkg.scripts?.start || pkg.scripts?.preview) return { valid: true };
+    } catch {
+      return { valid: false, reason: "The project's package.json isn't valid JSON." };
+    }
+  }
+  if (files.some((f) => f.path === 'index.html')) return { valid: true };
+
+  return {
+    valid: false,
+    reason: "The project wouldn't be runnable — it needs a package.json with a dev or start script, or an index.html.",
+  };
 }
 
 /** Generate a unique id for an operation (used by the undo stack). */

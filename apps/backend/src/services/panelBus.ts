@@ -35,7 +35,26 @@ export interface RedoRequestEvent {
   type: 'redo-request';
 }
 
-export type BusEvent = PanelEvent | BuildRequestEvent | UndoRequestEvent | RedoRequestEvent;
+/** Ask the desktop to scaffold + publish a brand-new project from the utterance. */
+export interface CreateProjectRequestEvent {
+  type: 'create-project-request';
+  transcript: string;
+  history: ConversationTurn[];
+}
+
+/** Ask the desktop to launch or stop the current project. */
+export interface RunRequestEvent {
+  type: 'run-request';
+  action: 'launch' | 'stop';
+}
+
+export type BusEvent =
+  | PanelEvent
+  | BuildRequestEvent
+  | UndoRequestEvent
+  | RedoRequestEvent
+  | CreateProjectRequestEvent
+  | RunRequestEvent;
 
 type Listener = (event: BusEvent) => void;
 
@@ -62,6 +81,19 @@ export function publishUndoRequest(): void {
 /** Ask the desktop to redo the most recently undone change. */
 export function publishRedoRequest(): void {
   emit({ type: 'redo-request' });
+}
+
+/** Hand a new-project request to the desktop (scaffold → folder → repo → push). */
+export function publishCreateProjectRequest(
+  transcript: string,
+  history: ConversationTurn[],
+): void {
+  emit({ type: 'create-project-request', transcript, history });
+}
+
+/** Ask the desktop to launch or stop the currently connected project. */
+export function publishRunRequest(action: 'launch' | 'stop'): void {
+  emit({ type: 'run-request', action });
 }
 
 /** Subscribe to bus events; returns an unsubscribe function. */
