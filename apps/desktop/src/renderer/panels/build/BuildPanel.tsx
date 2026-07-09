@@ -67,6 +67,11 @@ export function BuildPanel(): JSX.Element {
     <div className="flex h-full flex-col bg-ana-bg">
       <PanelHeader subtitle={repoPath} subtitleTitle={repoPath} mono />
       <ChangedFilesList />
+      {error && (
+        <p className="border-b border-red-900/30 bg-red-950/20 px-4 py-1.5 text-xs text-red-400">
+          {error}
+        </p>
+      )}
       <div className="min-h-0 flex-1">
         <CodeEditor />
       </div>

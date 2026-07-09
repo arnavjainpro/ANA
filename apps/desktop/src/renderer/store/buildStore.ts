@@ -53,6 +53,25 @@ interface BuildState {
   endSession: () => void;
 }
 
+/**
+ * Pick the best file to auto-open when a directory first loads.
+ * Prefers README and common entry points; falls back to the first file.
+ */
+function pickDefaultFile(tree: RepoTreeNode[]): string | null {
+  const files = tree.filter((n) => n.type === 'file').map((n) => n.path);
+  const fileset = new Set(files);
+  const PRIORITY = [
+    'README.md', 'readme.md',
+    'index.ts', 'index.tsx', 'main.ts', 'main.tsx',
+    'App.tsx', 'app.tsx',
+    'package.json',
+  ];
+  for (const name of PRIORITY) {
+    if (fileset.has(name)) return name;
+  }
+  return files[0] ?? null;
+}
+
 /** If the currently-open file is among the patches, sync its editor contents. */
 function applyPatchToOpenFile(
   state: BuildState,
@@ -108,7 +127,13 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const { repoPath } = get();
     if (!repoPath) return;
     const result = await window.ana.fs.listDir(repoPath);
-    if (!isIpcError(result)) set({ localTree: result.tree });
+    if (isIpcError(result)) return;
+    set({ localTree: result.tree });
+    // Auto-open a default file the first time so code is visible immediately.
+    if (!get().openPath) {
+      const defaultFile = pickDefaultFile(result.tree);
+      if (defaultFile) await get().openFile(defaultFile);
+    }
   },
 
   openFile: async (relPath) => {
