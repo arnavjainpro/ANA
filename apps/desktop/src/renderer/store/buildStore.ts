@@ -31,7 +31,9 @@ interface BuildState {
   selectRepoPath: (repoFullName: string) => Promise<void>;
   /** Reload the local working-copy file tree from disk. */
   loadLocalTree: () => Promise<void>;
-  /** Open a file in the editor (reads from disk via IPC). */
+  /** Open a file from GitHub in the editor. */
+  openGitHubFile: (fullName: string, path: string) => Promise<void>;
+  /** Open a file from local disk in the editor (used internally after build turns). */
   openFile: (relPath: string) => Promise<void>;
   /**
    * Run a Build turn. Returns Ana's spoken reply plus the applied patches (so
@@ -51,25 +53,6 @@ interface BuildState {
   refreshGitStatus: () => Promise<void>;
   setError: (error: string | null) => void;
   endSession: () => void;
-}
-
-/**
- * Pick the best file to auto-open when a directory first loads.
- * Prefers README and common entry points; falls back to the first file.
- */
-function pickDefaultFile(tree: RepoTreeNode[]): string | null {
-  const files = tree.filter((n) => n.type === 'file').map((n) => n.path);
-  const fileset = new Set(files);
-  const PRIORITY = [
-    'README.md', 'readme.md',
-    'index.ts', 'index.tsx', 'main.ts', 'main.tsx',
-    'App.tsx', 'app.tsx',
-    'package.json',
-  ];
-  for (const name of PRIORITY) {
-    if (fileset.has(name)) return name;
-  }
-  return files[0] ?? null;
 }
 
 /** If the currently-open file is among the patches, sync its editor contents. */
@@ -114,7 +97,6 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const result = await window.ana.build.selectRepoPath(repoFullName);
     set({ selectingPath: false });
     if (isIpcError(result)) {
-      // A cancelled dialog is not an error.
       if (result.error !== 'cancelled') set({ error: result.error });
       return;
     }
@@ -127,13 +109,18 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const { repoPath } = get();
     if (!repoPath) return;
     const result = await window.ana.fs.listDir(repoPath);
-    if (isIpcError(result)) return;
-    set({ localTree: result.tree });
-    // Auto-open a default file the first time so code is visible immediately.
-    if (!get().openPath) {
-      const defaultFile = pickDefaultFile(result.tree);
-      if (defaultFile) await get().openFile(defaultFile);
+    if (!isIpcError(result)) set({ localTree: result.tree });
+  },
+
+  openGitHubFile: async (fullName, path) => {
+    set({ loadingFile: true, error: null });
+    const result = await window.ana.repo.fileContent(fullName, path);
+    set({ loadingFile: false });
+    if (isIpcError(result)) {
+      set({ error: result.error });
+      return;
     }
+    set({ openPath: path, openContents: result.content });
   },
 
   openFile: async (relPath) => {
@@ -152,7 +139,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   runTurn: async ({ transcript, history, repoId, repoFullName }) => {
     const { repoPath, sessionId } = get();
     if (!repoPath) {
-      set({ error: 'Choose your local project folder first.' });
+      set({ error: 'Select your local project folder first so Ana can apply changes.' });
       return null;
     }
     set({ busy: true, error: null });
@@ -170,24 +157,23 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       return { spoken: result.error, patches: [] };
     }
     if (result.patches.length > 0) {
+      const firstPatched = result.patches[0];
+      const { openPath } = get();
+      // If the open file was patched, sync its content; otherwise jump to the first patched file.
+      const patchedOpenFile = result.patches.find((p) => p.path === openPath);
       set((state) => ({
         ...applyPatchToOpenFile(state, result.patches),
         lastPatches: result.patches,
         lastSummary: summaryFor(result.patches),
         canUndo: true,
+        // Jump to first patched file if the currently-open file wasn't touched.
+        ...(firstPatched && !patchedOpenFile
+          ? { openPath: firstPatched.path, openContents: firstPatched.updated }
+          : {}),
       }));
       void get().refreshGitStatus();
       void get().loadLocalTree();
-      // If the change touched a file that isn't open, open the first patched one.
-      // Open the first changed file so its diff shows immediately; the Composer
-      // then narrates each file in turn, advancing the view.
-      const { openPath } = get();
-      const firstPatched = result.patches[0];
-      if (firstPatched && (!openPath || !result.patches.some((p) => p.path === openPath))) {
-        await get().openFile(firstPatched.path);
-      }
     } else {
-      // No changes this turn — clear any lingering diff from a previous turn.
       set({ lastPatches: [] });
     }
     return { spoken: result.spoken, patches: result.patches };
