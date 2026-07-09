@@ -266,6 +266,7 @@ export interface AnaApi {
     tree: (fullName: string, branch: string) => Promise<IpcResult<{ tree: RepoTreeNode[] }>>;
     index: (fullName: string) => Promise<IpcResult<IndexDone>>;
     onIndexProgress: (cb: (p: IndexProgress) => void) => () => void;
+    fileContent: (fullName: string, path: string) => Promise<IpcResult<{ content: string }>>;
   };
   conversation: {
     start: () => Promise<IpcResult<{ conversationId: string; conversationUrl: string }>>;
@@ -301,6 +302,7 @@ export interface AnaApi {
   };
   fs: {
     readFile: (repoPath: string, relPath: string) => Promise<IpcResult<{ contents: string }>>;
+    writeFile: (repoPath: string, relPath: string, contents: string) => Promise<IpcResult<{ success: true }>>;
     /** Recursively list the local working copy as a flat RepoTreeNode[]. */
     listDir: (repoPath: string) => Promise<IpcResult<{ tree: RepoTreeNode[] }>>;
     getRepoRoot: () => Promise<{ repoPath: string | null }>;

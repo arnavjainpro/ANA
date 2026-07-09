@@ -158,25 +158,15 @@ function fileIcon(name: string): JSX.Element {
  */
 export function FileTree(): JSX.Element {
   const githubTree = useRepoStore((s) => s.tree);
+  const selectedRepo = useRepoStore((s) => s.selectedRepo);
   const buildMode = useUiStore((s) => s.activeMode === 'Build');
-  const localTree = useBuildStore((s) => s.localTree);
-  const gitStatus = useBuildStore((s) => s.gitStatus);
-  const openBuildFile = useBuildStore((s) => s.openFile);
+  const openGitHubFile = useBuildStore((s) => s.openGitHubFile);
   const openPath = useBuildStore((s) => s.openPath);
 
-  const source = buildMode ? localTree : githubTree;
+  // Build mode now uses the same GitHub tree as other modes.
+  const source = githubTree;
 
   const tree = useMemo(() => buildTree(source.filter((n) => n.type === 'file')), [source]);
-
-  const modified = useMemo(
-    () =>
-      new Set<string>([
-        ...(gitStatus?.staged ?? []),
-        ...(gitStatus?.unstaged ?? []),
-        ...(gitStatus?.untracked ?? []),
-      ]),
-    [gitStatus],
-  );
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -226,11 +216,14 @@ export function FileTree(): JSX.Element {
       }
 
       const isOpenFile = buildMode && openPath === node.path;
-      const isModified = buildMode && modified.has(node.path);
       return (
         <li key={node.path}>
           <div
-            onClick={buildMode ? () => void openBuildFile(node.path) : undefined}
+            onClick={
+              buildMode && selectedRepo
+                ? () => void openGitHubFile(selectedRepo.full_name, node.path)
+                : undefined
+            }
             style={{ paddingLeft: pad + 18 }}
             className={`group relative flex w-full items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
               buildMode ? 'cursor-pointer' : 'cursor-default'
@@ -248,13 +241,6 @@ export function FileTree(): JSX.Element {
             >
               {node.name}
             </span>
-            {isModified && (
-              <span
-                aria-label="Modified"
-                title="Modified"
-                className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-400"
-              />
-            )}
           </div>
         </li>
       );
