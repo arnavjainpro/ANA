@@ -45,6 +45,22 @@ export function registerRepoIpc(): void {
     },
   );
 
+  ipcMain.handle(
+    'repo:fileContent',
+    async (_e, fullName: string, path: string): Promise<IpcResult<{ content: string }>> => {
+      try {
+        const token = await requireToken();
+        return await backendJson<{ content: string }>('/repo/file', {
+          method: 'POST',
+          body: JSON.stringify({ fullName, path }),
+          githubToken: token,
+        });
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Failed to fetch file content.' };
+      }
+    },
+  );
+
   // Index a repo, relaying NDJSON progress lines to the renderer as they stream.
   ipcMain.handle(
     'repo:index',

@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
+import { FileViewerPanel } from './panels/viewer/FileViewerPanel';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
 import { useConversationStore } from './store/conversationStore';
@@ -394,6 +395,7 @@ export default function App(): JSX.Element {
         >
           <IndexingProgress />
           <WorkspaceContent />
+          <FileViewerPanel />
         </main>
       </div>
 

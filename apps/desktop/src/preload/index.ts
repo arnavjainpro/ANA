@@ -24,6 +24,8 @@ const api: AnaApi = {
     tree: (fullName: string, branch: string) =>
       ipcRenderer.invoke('repo:tree', fullName, branch),
     index: (fullName: string) => ipcRenderer.invoke('repo:index', fullName),
+    fileContent: (fullName: string, path: string) =>
+      ipcRenderer.invoke('repo:fileContent', fullName, path),
     onIndexProgress: (cb: (p: IndexProgress) => void) => {
       const listener = (_e: unknown, p: IndexProgress): void => cb(p);
       ipcRenderer.on('repo:index-progress', listener);

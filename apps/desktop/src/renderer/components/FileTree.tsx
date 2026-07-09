@@ -158,6 +158,8 @@ function fileIcon(name: string): JSX.Element {
  */
 export function FileTree(): JSX.Element {
   const githubTree = useRepoStore((s) => s.tree);
+  const openRepoFile = useRepoStore((s) => s.openRepoFile);
+  const viewingFile = useRepoStore((s) => s.viewingFile);
   const buildMode = useUiStore((s) => s.activeMode === 'Build');
   const localTree = useBuildStore((s) => s.localTree);
   const gitStatus = useBuildStore((s) => s.gitStatus);
@@ -225,16 +227,21 @@ export function FileTree(): JSX.Element {
         );
       }
 
-      const isOpenFile = buildMode && openPath === node.path;
+      const isOpenFile = buildMode
+        ? openPath === node.path
+        : viewingFile?.path === node.path;
       const isModified = buildMode && modified.has(node.path);
+      const handleClick = buildMode
+        ? () => void openBuildFile(node.path)
+        : () => void openRepoFile(node.path);
       return (
         <li key={node.path}>
           <div
-            onClick={buildMode ? () => void openBuildFile(node.path) : undefined}
+            onClick={handleClick}
             style={{ paddingLeft: pad + 18 }}
-            className={`group relative flex w-full items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
-              buildMode ? 'cursor-pointer' : 'cursor-default'
-            } ${isOpenFile ? 'bg-ana-brand-soft' : 'hover:bg-ana-hover'}`}
+            className={`group relative flex w-full cursor-pointer items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
+              isOpenFile ? 'bg-ana-brand-soft' : 'hover:bg-ana-hover'
+            }`}
             title={node.path}
           >
             {isOpenFile && (

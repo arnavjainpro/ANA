@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { listRepos, getRepoTree } from '../services/github.js';
+import { listRepos, getRepoTree, getFileContents } from '../services/github.js';
 import { indexRepo } from '../services/indexer.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
@@ -27,6 +27,21 @@ export async function repoRoutes(app: FastifyInstance): Promise<void> {
       }
       const tree = await getRepoTree(token, fullName, branch || 'main');
       return reply.send({ tree });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  // Fetch the raw UTF-8 contents of a single file from GitHub.
+  app.post<{ Body: { fullName: string; path: string } }>('/repo/file', async (req, reply) => {
+    try {
+      const token = githubTokenFrom(req);
+      const { fullName, path } = req.body ?? {};
+      if (!fullName || !path) {
+        return reply.status(400).send({ error: 'Missing fullName or path', code: 'MISSING_PARAMS' });
+      }
+      const content = await getFileContents(token, fullName, path);
+      return reply.send({ content });
     } catch (err) {
       return sendError(reply, err);
     }
