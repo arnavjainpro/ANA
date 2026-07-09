@@ -15,6 +15,7 @@ interface BuildState {
   localTree: RepoTreeNode[];
   openPath: string | null;
   openContents: string;
+  isDirty: boolean;
   loadingFile: boolean;
   /** Files changed by Ana's last turn (drives the diff view + changed-files list). */
   lastPatches: FilePatch[];
@@ -35,6 +36,10 @@ interface BuildState {
   openGitHubFile: (fullName: string, path: string) => Promise<void>;
   /** Open a file from local disk in the editor (used internally after build turns). */
   openFile: (relPath: string) => Promise<void>;
+  /** Called when the user edits the file in the Monaco editor. */
+  setOpenContents: (contents: string) => void;
+  /** Save the currently-open file to the local working copy. */
+  saveFile: () => Promise<void>;
   /**
    * Run a Build turn. Returns Ana's spoken reply plus the applied patches (so
    * the caller can narrate one line per file), or null when there is no repo
@@ -74,6 +79,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   localTree: [],
   openPath: null,
   openContents: '',
+  isDirty: false,
   loadingFile: false,
   lastPatches: [],
 
@@ -113,27 +119,45 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   },
 
   openGitHubFile: async (fullName, path) => {
-    set({ loadingFile: true, error: null });
+    set({ loadingFile: true, error: null, isDirty: false });
     const result = await window.ana.repo.fileContent(fullName, path);
     set({ loadingFile: false });
     if (isIpcError(result)) {
       set({ error: result.error });
       return;
     }
-    set({ openPath: path, openContents: result.content });
+    set({ openPath: path, openContents: result.content, isDirty: false });
   },
 
   openFile: async (relPath) => {
     const { repoPath } = get();
     if (!repoPath) return;
-    set({ loadingFile: true, error: null });
+    set({ loadingFile: true, error: null, isDirty: false });
     const result = await window.ana.fs.readFile(repoPath, relPath);
     set({ loadingFile: false });
     if (isIpcError(result)) {
       set({ error: result.error });
       return;
     }
-    set({ openPath: relPath, openContents: result.contents });
+    set({ openPath: relPath, openContents: result.contents, isDirty: false });
+  },
+
+  setOpenContents: (contents) => set({ openContents: contents, isDirty: true }),
+
+  saveFile: async () => {
+    const { repoPath, openPath, openContents } = get();
+    if (!openPath) return;
+    if (!repoPath) {
+      set({ error: 'Select your local project folder first to save changes.' });
+      return;
+    }
+    set({ error: null });
+    const result = await window.ana.fs.writeFile(repoPath, openPath, openContents);
+    if (isIpcError(result)) {
+      set({ error: result.error });
+      return;
+    }
+    set({ isDirty: false });
   },
 
   runTurn: async ({ transcript, history, repoId, repoFullName }) => {

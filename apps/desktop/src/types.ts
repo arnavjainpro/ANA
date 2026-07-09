@@ -302,6 +302,7 @@ export interface AnaApi {
   };
   fs: {
     readFile: (repoPath: string, relPath: string) => Promise<IpcResult<{ contents: string }>>;
+    writeFile: (repoPath: string, relPath: string, contents: string) => Promise<IpcResult<{ success: true }>>;
     /** Recursively list the local working copy as a flat RepoTreeNode[]. */
     listDir: (repoPath: string) => Promise<IpcResult<{ tree: RepoTreeNode[] }>>;
     getRepoRoot: () => Promise<{ repoPath: string | null }>;

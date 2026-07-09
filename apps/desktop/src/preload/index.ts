@@ -59,6 +59,8 @@ const api: AnaApi = {
   fs: {
     readFile: (repoPath: string, relPath: string) =>
       ipcRenderer.invoke('fs:readFile', repoPath, relPath),
+    writeFile: (repoPath: string, relPath: string, contents: string) =>
+      ipcRenderer.invoke('fs:writeFile', repoPath, relPath, contents),
     listDir: (repoPath: string) => ipcRenderer.invoke('fs:listDir', repoPath),
     getRepoRoot: () => ipcRenderer.invoke('fs:getRepoRoot'),
   },
