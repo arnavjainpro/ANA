@@ -18,6 +18,7 @@ import {
   publishRedoRequest,
   publishCreateProjectRequest,
   publishRunRequest,
+  publishTerminalRequest,
 } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
 import type { ConversationTurn, IntentClassification } from '../lib/types.js';
@@ -49,6 +50,18 @@ const REDO_ACKS = ['Sure, redoing that.', 'Okay, putting that back.', 'Got it, r
 
 function pickRedoAck(): string {
   return REDO_ACKS[Math.floor(Math.random() * REDO_ACKS.length)] ?? REDO_ACKS[0];
+}
+
+// Spoken while the desktop runs the command in the integrated terminal; the
+// user watches the real output appear in the panel, so no follow-up is spoken.
+const TERMINAL_ACKS = [
+  'Sure, running that now.',
+  'On it — running that in the terminal.',
+  'Okay, let me run that for you.',
+] as const;
+
+function pickTerminalAck(): string {
+  return TERMINAL_ACKS[Math.floor(Math.random() * TERMINAL_ACKS.length)] ?? TERMINAL_ACKS[0];
 }
 
 // Spoken while the desktop scaffolds a brand-new project; the flow continues
@@ -240,6 +253,9 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
               null,
             ),
           );
+        } else if (intent.terminalCommand) {
+          publishTerminalRequest(intent.terminalCommand);
+          reply.raw.write(chunkLine(base, { content: pickTerminalAck() }, null));
         } else if (intent.mode === 'Build') {
           publishBuildRequest(transcript, history);
           reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));

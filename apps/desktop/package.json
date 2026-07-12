@@ -10,7 +10,8 @@
     "package": "vite build && electron-builder",
     "package:mac": "vite build && electron-builder --mac dmg",
     "package:win": "vite build && electron-builder --win nsis",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "electron-rebuild -f -w node-pty"
   },
   "dependencies": {
     "@daily-co/daily-js": "^0.87.0",
@@ -19,9 +20,12 @@
     "@fontsource/fira-code": "^5.2.7",
     "@mermaid-js/layout-elk": "^0.2.2",
     "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "jotai": "^2.20.1",
     "mermaid": "^11.4.1",
     "monaco-editor": "^0.55.1",
+    "node-pty": "^1.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-resizable-panels": "^4.11.2",
@@ -30,6 +34,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",

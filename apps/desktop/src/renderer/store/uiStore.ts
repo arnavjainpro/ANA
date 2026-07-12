@@ -36,6 +36,13 @@ interface UiState {
   windowMode: WindowMode;
   popupExpanded: boolean;
   setWindowState: (state: WindowModeState) => void;
+
+  // Integrated terminal (bottom panel, VS Code style)
+  terminalOpen: boolean;
+  terminalHeight: number; // in pixels, default 240
+  setTerminalOpen: (open: boolean) => void;
+  toggleTerminal: () => void;
+  setTerminalHeight: (height: number) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -61,4 +68,10 @@ export const useUiStore = create<UiState>((set) => ({
   windowMode: 'full',
   popupExpanded: false,
   setWindowState: ({ mode, popupExpanded }) => set({ windowMode: mode, popupExpanded }),
+
+  terminalOpen: false,
+  terminalHeight: 240,
+  setTerminalOpen: (open) => set({ terminalOpen: open }),
+  toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+  setTerminalHeight: (height) => set({ terminalHeight: Math.max(120, Math.min(600, height)) }),
 }));
