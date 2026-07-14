@@ -6,6 +6,10 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
+# node-pty ships a native binary — it must stay unpacked from the asar so the
+# OS loader can dlopen/LoadLibrary it at runtime.
+asarUnpack:
+  - '**/node_modules/node-pty/**'
 mac:
   target:
     - dmg

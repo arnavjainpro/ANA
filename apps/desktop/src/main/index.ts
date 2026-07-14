@@ -15,6 +15,7 @@ import { registerBuildIpc } from './ipc/build.js';
 import { registerWindowIpc, registerPopupShortcut, resetWindowMode } from './ipc/window.js';
 import { registerProjectIpc } from './ipc/project.js';
 import { registerRunIpc, stopAllRuns } from './ipc/run.js';
+import { registerTerminalIpc, killAllTerminals } from './ipc/terminal.js';
 
 // Vite-plugin-electron injects these env vars in dev.
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -131,6 +132,7 @@ if (!gotLock) {
     registerWindowIpc(() => mainWindow);
     registerProjectIpc(() => mainWindow);
     registerRunIpc(() => mainWindow);
+    registerTerminalIpc(() => mainWindow);
     createWindow();
     registerPopupShortcut(() => mainWindow);
 
@@ -153,6 +155,7 @@ if (!gotLock) {
   app.on('before-quit', (event) => {
     // Kill any dev servers Ana launched so they don't outlive the app.
     stopAllRuns();
+    killAllTerminals();
     if (cleaningUp || !hasActiveConversation()) return;
     event.preventDefault();
     cleaningUp = true;

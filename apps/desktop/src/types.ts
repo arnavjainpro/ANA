@@ -118,6 +118,12 @@ export interface RunRequestEvent {
   action: 'launch' | 'stop';
 }
 
+/** A spoken request to run a shell command in the integrated terminal. */
+export interface TerminalRequestEvent {
+  type: 'terminal-request';
+  command: string;
+}
+
 /** Events streamed to the desktop from voice (Tavus) turns. */
 export type BusEvent =
   | PanelEvent
@@ -125,7 +131,8 @@ export type BusEvent =
   | UndoRequestEvent
   | RedoRequestEvent
   | CreateProjectRequestEvent
-  | RunRequestEvent;
+  | RunRequestEvent
+  | TerminalRequestEvent;
 
 // --- New-project creation ------------------------------------------------------
 
@@ -172,6 +179,20 @@ export interface RunStatus {
   running: boolean;
   url: string | null;
   kind: 'dev-server' | 'static' | null;
+}
+
+// --- Integrated terminal -------------------------------------------------------
+
+/** A chunk of raw shell output pushed from a PTY session. */
+export interface TerminalDataEvent {
+  id: string;
+  data: string;
+}
+
+/** A PTY session's shell process has exited. */
+export interface TerminalExitEvent {
+  id: string;
+  exitCode: number;
 }
 
 // --- Build mode --------------------------------------------------------------
@@ -334,6 +355,22 @@ export interface AnaApi {
     status: (repoPath: string) => Promise<RunStatus>;
     /** Subscribe to launch-progress pushes. Returns an unsubscribe function. */
     onProgress: (cb: (p: RunProgress) => void) => () => void;
+  };
+  terminal: {
+    /** Spawn a shell session rooted at `cwd` (defaults to the connected repo's local path). */
+    create: (cwd?: string) => Promise<IpcResult<{ id: string }>>;
+    /** Send raw input (keystrokes) to a session — the shell echoes/executes it. */
+    write: (id: string, data: string) => Promise<IpcResult<{ ok: true }>>;
+    /** Run a full command line as if typed + Enter — lets Ana execute commands on the user's behalf. */
+    run: (id: string, command: string) => Promise<IpcResult<{ ok: true }>>;
+    /** Notify the PTY of the panel's current size so wrapped output renders correctly. */
+    resize: (id: string, cols: number, rows: number) => Promise<IpcResult<{ ok: true }>>;
+    /** Terminate a session's shell process. */
+    kill: (id: string) => Promise<IpcResult<{ ok: true }>>;
+    /** Subscribe to output chunks from any session. Returns an unsubscribe function. */
+    onData: (cb: (evt: TerminalDataEvent) => void) => () => void;
+    /** Subscribe to a session's shell process exiting. Returns an unsubscribe function. */
+    onExit: (cb: (evt: TerminalExitEvent) => void) => () => void;
   };
   window: {
     /** Switch the app window between the full split layout and the floating popup. */

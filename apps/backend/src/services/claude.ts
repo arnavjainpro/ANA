@@ -52,12 +52,14 @@ Respond ONLY with a JSON object in this exact shape, no preamble:
   "diagramDepth": "basic | deep",
   "createProject": true | false,
   "projectName": "<the name the user gave the new project, else null>",
-  "runAction": "launch | stop | null"
+  "runAction": "launch | stop | null",
+  "terminalCommand": "<literal shell command to run, else null>"
 }
 
 Rules:
 - Set "createProject" to true when the user asks to START A BRAND-NEW project, app, or site — "start a new project (called X)", "create a new app", "make me a website from scratch", "build me a calculator" when the conversation shows no existing project is being edited. It is false for changes to existing code ("add a button", "fix the header"). When true and the user named the project, put that name in "projectName" (else null).
 - Set "runAction" to "launch" when the user asks to run, open, launch, start up, or see the project working ("run it", "show me", "open it", "let me see it", "start it up"). Set it to "stop" when they ask to stop or kill it ("stop it", "kill it", "shut it down"). Otherwise null. These utterances are NOT Build — do not classify them as code changes.
+- Set "terminalCommand" to the exact shell command when the user explicitly asks Ana to run a terminal/command-line task — installing dependencies ("install the dependencies" → "npm install"), running tests ("run the tests" → "npm test"), running a script, or checking status ("what's the git status" → "git status"). Give the literal, runnable command a developer would type, not a description. This is distinct from "runAction" (which only launches/stops the dev server to view the app in a browser) and is NOT Build (it never edits files). Leave it null for anything destructive, irreversible, or that touches things outside this project (deleting files/branches, force-pushing, "rm -rf", changing permissions, anything involving sudo, formatting/wiping a drive, killing unrelated processes) — treat those the same as if nothing was asked, even if the user insists.
 - Set "undo" to true when the user is asking to undo, revert, take back, or roll back the last change ("undo that", "revert it", "go back"). Otherwise set it to false.
 - Set "redo" to true when the user is asking to redo or re-apply a change they just undid ("redo that", "redo the change", "put it back", "do it again"). Otherwise set it to false.
 - Choose "Understand" when the user wants to know what the codebase does or how something works.

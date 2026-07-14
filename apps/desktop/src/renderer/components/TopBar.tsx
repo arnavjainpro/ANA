@@ -21,6 +21,8 @@ export function TopBar(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
+  const terminalOpen = useUiStore((s) => s.terminalOpen);
+  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
   const connected = useRepoStore((s) => s.connected);
   const login = useRepoStore((s) => s.login);
   const selectedRepo = useRepoStore((s) => s.selectedRepo);
@@ -105,8 +107,24 @@ export function TopBar(): JSX.Element {
         })}
       </div>
 
-      {/* Right: pop-out + command palette + connection status */}
+      {/* Right: terminal + pop-out + command palette + connection status */}
       <div className="flex flex-1 items-center justify-end gap-2.5">
+        <button
+          type="button"
+          onClick={toggleTerminal}
+          className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-150 hover:bg-ana-hover hover:text-ana-text ${
+            terminalOpen ? 'text-ana-brand' : 'text-ana-text-muted'
+          }`}
+          aria-label="Toggle terminal"
+          aria-pressed={terminalOpen}
+          title={`Toggle terminal (${IS_MAC ? '⌘`' : 'Ctrl+`'})`}
+        >
+          <svg aria-hidden="true" className="h-[16px] w-[16px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 9l3 3-3 3m5 0h4" />
+          </svg>
+        </button>
+
         <button
           type="button"
           onClick={() => void window.ana.window.setMode('popup')}

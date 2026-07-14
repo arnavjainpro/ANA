@@ -8,10 +8,12 @@ import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
+import { TerminalPanel } from './panels/terminal/TerminalPanel';
 import { useUiStore } from './store/uiStore';
 import { useRepoStore } from './store/repoStore';
 import { useConversationStore } from './store/conversationStore';
 import { useBuildStore } from './store/buildStore';
+import { useTerminalStore } from './store/terminalStore';
 import { isIpcError } from './lib/ipc';
 import { speakViaTavus } from './lib/voiceEcho';
 import type { ConversationTurn, FilePatch } from '../types';
@@ -204,6 +206,15 @@ async function handleVoiceRun(action: 'launch' | 'stop'): Promise<void> {
   }
 }
 
+/** A spoken "run npm install" / "run the tests" — executes in the integrated terminal. */
+async function handleVoiceTerminal(command: string): Promise<void> {
+  const ok = await useTerminalStore.getState().runCommand(command);
+  if (!ok) {
+    const reason = useTerminalStore.getState().error;
+    say(reason ?? "I couldn't run that in the terminal.");
+  }
+}
+
 export default function App(): JSX.Element {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const isPanelLoading = useUiStore((s) => s.isPanelLoading);
@@ -212,6 +223,10 @@ export default function App(): JSX.Element {
   const windowMode = useUiStore((s) => s.windowMode);
   const popupExpanded = useUiStore((s) => s.popupExpanded);
   const setWindowState = useUiStore((s) => s.setWindowState);
+  const terminalOpen = useUiStore((s) => s.terminalOpen);
+  const terminalHeight = useUiStore((s) => s.terminalHeight);
+  const toggleTerminal = useUiStore((s) => s.toggleTerminal);
+  const setTerminalHeight = useUiStore((s) => s.setTerminalHeight);
   const applyPanel = useConversationStore((s) => s.applyPanel);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
@@ -220,8 +235,10 @@ export default function App(): JSX.Element {
 
   const [centerWidth, setCenterWidth] = useState(40);
   const [dragging, setDragging] = useState(false);
+  const [draggingTerminal, setDraggingTerminal] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
   const anaPaneRef = useRef<HTMLElement>(null);
+  const workspaceColumnRef = useRef<HTMLDivElement>(null);
   const activeError = error ?? repoError;
   const isPopup = windowMode === 'popup';
 
@@ -259,6 +276,10 @@ export default function App(): JSX.Element {
       }
       if (evt.type === 'run-request') {
         void handleVoiceRun(evt.action);
+        return;
+      }
+      if (evt.type === 'terminal-request') {
+        void handleVoiceTerminal(evt.command);
         return;
       }
       setActiveMode(evt.mode);
@@ -335,10 +356,53 @@ export default function App(): JSX.Element {
     };
   }, [dragging]);
 
+  const handleTerminalMouseDown = () => {
+    setDraggingTerminal(true);
+  };
+
+  useEffect(() => {
+    if (!draggingTerminal) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const container = workspaceColumnRef.current;
+      if (!container) return;
+      // The panel is pinned to the bottom of this column, so its height is the
+      // distance from the column's bottom edge up to the cursor — dragging the
+      // handle up (cursor Y decreases) grows the terminal.
+      const rect = container.getBoundingClientRect();
+      setTerminalHeight(rect.bottom - e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      setDraggingTerminal(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingTerminal, setTerminalHeight]);
+
+  // Cmd+` / Ctrl+` toggles the integrated terminal, VS Code style.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key === '`') {
+        e.preventDefault();
+        toggleTerminal();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleTerminal]);
+
   return (
     <div className="flex h-screen w-screen flex-col bg-ana-bg text-ana-text">
       {isPopup ? <PopupHeader /> : <TopBar />}
 
+      <div ref={workspaceColumnRef} className="flex flex-1 min-h-0 flex-col overflow-hidden">
       <div id="main-content" className="flex flex-1 min-h-0 overflow-hidden">
         {sidebarOpen && !isPopup && (
           <aside
@@ -395,6 +459,23 @@ export default function App(): JSX.Element {
           <IndexingProgress />
           <WorkspaceContent />
         </main>
+      </div>
+
+        {/* Always mounted (not conditionally rendered) so the shell session
+            inside TerminalPanel survives the panel being toggled closed —
+            only visibility and height change here. */}
+        <div className={`flex flex-shrink-0 flex-col ${!terminalOpen || isPopup ? 'hidden' : ''}`}>
+          <div
+            aria-hidden="true"
+            onMouseDown={handleTerminalMouseDown}
+            className={`h-1 cursor-row-resize bg-ana-border transition-colors hover:bg-ana-brand ${
+              draggingTerminal ? 'bg-ana-brand' : ''
+            }`}
+          />
+          <div style={{ height: terminalHeight }} className="overflow-hidden border-t border-ana-border">
+            <TerminalPanel />
+          </div>
+        </div>
       </div>
 
       {activeError && (

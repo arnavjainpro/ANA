@@ -48,13 +48,20 @@ export interface RunRequestEvent {
   action: 'launch' | 'stop';
 }
 
+/** Ask the desktop to run a shell command in the integrated terminal. */
+export interface TerminalRequestEvent {
+  type: 'terminal-request';
+  command: string;
+}
+
 export type BusEvent =
   | PanelEvent
   | BuildRequestEvent
   | UndoRequestEvent
   | RedoRequestEvent
   | CreateProjectRequestEvent
-  | RunRequestEvent;
+  | RunRequestEvent
+  | TerminalRequestEvent;
 
 type Listener = (event: BusEvent) => void;
 
@@ -94,6 +101,11 @@ export function publishCreateProjectRequest(
 /** Ask the desktop to launch or stop the currently connected project. */
 export function publishRunRequest(action: 'launch' | 'stop'): void {
   emit({ type: 'run-request', action });
+}
+
+/** Ask the desktop to run a shell command in the integrated terminal. */
+export function publishTerminalRequest(command: string): void {
+  emit({ type: 'terminal-request', command });
 }
 
 /** Subscribe to bus events; returns an unsubscribe function. */

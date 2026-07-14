@@ -56,6 +56,13 @@ export interface IntentClassification {
   projectName?: string | null;
   /** "run it / show me / open it" → 'launch'; "stop it / kill it" → 'stop'. */
   runAction?: 'launch' | 'stop' | null;
+  /**
+   * The literal shell command to run when the user explicitly asks Ana to run
+   * a terminal/shell command (install deps, run tests, check git status, run a
+   * script) — distinct from `runAction`, which only launches/stops the dev
+   * server. Null when no shell command was requested.
+   */
+  terminalCommand?: string | null;
 }
 
 // --- Project creation (Ana scaffolds + publishes a brand-new repo) -------------

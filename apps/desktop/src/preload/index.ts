@@ -8,6 +8,8 @@ import type {
   ProjectProgress,
   RunProgress,
   ScaffoldResult,
+  TerminalDataEvent,
+  TerminalExitEvent,
   TurnRequest,
   WindowMode,
   WindowModeState,
@@ -88,6 +90,24 @@ const api: AnaApi = {
       const listener = (_e: unknown, p: RunProgress): void => cb(p);
       ipcRenderer.on('run:progress', listener);
       return () => ipcRenderer.removeListener('run:progress', listener);
+    },
+  },
+  terminal: {
+    create: (cwd?: string) => ipcRenderer.invoke('terminal:create', cwd),
+    write: (id: string, data: string) => ipcRenderer.invoke('terminal:write', id, data),
+    run: (id: string, command: string) => ipcRenderer.invoke('terminal:run', id, command),
+    resize: (id: string, cols: number, rows: number) =>
+      ipcRenderer.invoke('terminal:resize', id, cols, rows),
+    kill: (id: string) => ipcRenderer.invoke('terminal:kill', id),
+    onData: (cb: (evt: TerminalDataEvent) => void) => {
+      const listener = (_e: unknown, evt: TerminalDataEvent): void => cb(evt);
+      ipcRenderer.on('terminal:data', listener);
+      return () => ipcRenderer.removeListener('terminal:data', listener);
+    },
+    onExit: (cb: (evt: TerminalExitEvent) => void) => {
+      const listener = (_e: unknown, evt: TerminalExitEvent): void => cb(evt);
+      ipcRenderer.on('terminal:exit', listener);
+      return () => ipcRenderer.removeListener('terminal:exit', listener);
     },
   },
   window: {
