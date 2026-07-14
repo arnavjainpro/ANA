@@ -242,7 +242,7 @@ function CallStage(): JSX.Element {
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
           <p className="text-sm text-text-secondary">{error ? 'Couldn’t connect' : 'Connecting to Ana…'}</p>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-status-danger">{error}</p>}
         </div>
       )}
 

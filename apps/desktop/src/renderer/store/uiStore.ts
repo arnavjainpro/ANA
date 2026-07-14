@@ -10,15 +10,12 @@ interface UiState {
   setActiveMode: (mode: Mode) => void;
   toggleModeLock: () => void;
   
-  // Sidebar and panel management
+  // Sidebar and panel management (panel sizes persist via the layout's
+  // localStorage-backed useDefaultLayout, not the store)
   sidebarOpen: boolean;
-  sidebarWidth: number; // in pixels, default 280
-  showAnaFace: boolean;
   commandPaletteOpen: boolean;
-  
+
   setSidebarOpen: (open: boolean) => void;
-  setSidebarWidth: (width: number) => void;
-  setShowAnaFace: (show: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
 
   /**
@@ -43,10 +40,8 @@ interface UiState {
 
   // Integrated terminal (bottom panel, VS Code style)
   terminalOpen: boolean;
-  terminalHeight: number; // in pixels, default 240
   setTerminalOpen: (open: boolean) => void;
   toggleTerminal: () => void;
-  setTerminalHeight: (height: number) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -57,13 +52,9 @@ export const useUiStore = create<UiState>((set) => ({
   toggleModeLock: () => set((s) => ({ modeLocked: !s.modeLocked })),
   
   sidebarOpen: true,
-  sidebarWidth: 280,
-  showAnaFace: true,
   commandPaletteOpen: false,
-  
+
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setSidebarWidth: (width) => set({ sidebarWidth: Math.max(200, Math.min(600, width)) }),
-  setShowAnaFace: (show) => set({ showAnaFace: show }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
   isPanelLoading: false,
@@ -77,8 +68,6 @@ export const useUiStore = create<UiState>((set) => ({
   toggleComposer: () => set((s) => ({ composerOpen: !s.composerOpen })),
 
   terminalOpen: false,
-  terminalHeight: 240,
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
-  setTerminalHeight: (height) => set({ terminalHeight: Math.max(120, Math.min(600, height)) }),
 }));

@@ -26,12 +26,23 @@ src/
                     only, never raw ipcRenderer. Surface defined by AnaApi in types.ts.
   renderer/
     main.tsx        React root.
-    App.tsx         Split layout (left: Ana face, right: workspace) + top bar.
-    store/          Zustand, one domain per file: uiStore, repoStore, conversationStore.
-    components/     TopBar, ConnectGitHub, RepoList, FileTree, AnaFace.
+    App.tsx         Resizable panel layout (react-resizable-panels): sidebar /
+                    Ana face / workspace columns + bottom terminal row + top bar.
+    store/          Zustand, one domain per file: uiStore, repoStore,
+                    conversationStore, buildStore, terminalStore.
+    components/     TopBar, PopupHeader, ConnectPanel, FileTree(Section),
+                    AnaConversation/CviConversation, CommandPalette, Composer
+                    (typed input below the Ana face, toggled from the Ana pane).
+    components/ui/  Shared primitives: Button, IconButton, PanelHeader,
+                    EmptyState, ErrorBanner, Kbd, Spinner, GithubIcon. Icons
+                    come from lucide-react (size 16/14, strokeWidth 1.75).
+    theme/          tokens.json (single source for Tailwind + Monaco + xterm)
+                    and tokens.ts (typed export + ana-dark Monaco theme).
     panels/
       understand/   Mermaid diagram panel.
       plan/         Whiteboard (stories / criteria / tasks) panel.
+      build/        Monaco editor + diff + changed files + undo bar.
+      terminal/     xterm.js PTY terminal (bottom panel).
     lib/            Renderer-side utilities (e.g. ana API wrapper, mermaid render).
   types.ts          Shared types + the AnaApi IPC contract (source of truth for
                     preload ↔ renderer). Duplicated from backend so the renderer
@@ -54,7 +65,11 @@ src/
   resolves with the final `done` payload (or `{ error }`).
 - The Ana face embeds the Tavus `conversationUrl` (a Daily.co room). The CSP in
   `index.html` already allows `frame-src https://*.daily.co https://*.tavus.io`.
-- Tailwind theme colors: `ana-bg`, `ana-panel`, `ana-border`, `ana-accent`
-  (see `tailwind.config.cjs`). No inline styles.
+- Tailwind theme colors are semantic tokens sourced from
+  `src/renderer/theme/tokens.json`: `surface-{base,raised,overlay,modal,border,
+  border-strong,hover,active}`, `text-{primary,secondary,tertiary,disabled}`,
+  `accent-{primary,hover,muted,border}`, `status-{success,warning,danger}(-muted)`.
+  Monaco (`ana-dark`) and xterm themes derive from the same file via
+  `theme/tokens.ts`. No inline styles.
 - Config files that must be CommonJS use `.cjs` (`tailwind.config.cjs`,
   `postcss.config.cjs`). Everything else is `.ts`/`.tsx`, strict mode.
