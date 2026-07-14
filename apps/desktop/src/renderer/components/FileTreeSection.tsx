@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useUiStore } from '../store/uiStore';
 import { FileTree } from './FileTree';
 
@@ -24,17 +25,14 @@ export function FileTreeSection(): JSX.Element {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex items-center gap-2 border-t border-ana-border px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ana-text-muted transition-colors hover:text-ana-text"
+        className="flex cursor-pointer items-center gap-2 border-t border-surface-border px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary transition-colors duration-150 hover:text-text-primary"
       >
-        <svg
-          aria-hidden="true"
-          className={`h-3 w-3 flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight
+          size={12}
+          strokeWidth={2}
+          aria-hidden
+          className={`flex-shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+        />
         Files
       </button>
       {expanded && (

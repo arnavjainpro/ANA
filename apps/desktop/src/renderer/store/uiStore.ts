@@ -37,6 +37,10 @@ interface UiState {
   popupExpanded: boolean;
   setWindowState: (state: WindowModeState) => void;
 
+  /** Typed-message composer below the Ana face; hidden unless toggled on. */
+  composerOpen: boolean;
+  toggleComposer: () => void;
+
   // Integrated terminal (bottom panel, VS Code style)
   terminalOpen: boolean;
   terminalHeight: number; // in pixels, default 240
@@ -68,6 +72,9 @@ export const useUiStore = create<UiState>((set) => ({
   windowMode: 'full',
   popupExpanded: false,
   setWindowState: ({ mode, popupExpanded }) => set({ windowMode: mode, popupExpanded }),
+
+  composerOpen: false,
+  toggleComposer: () => set((s) => ({ composerOpen: !s.composerOpen })),
 
   terminalOpen: false,
   terminalHeight: 240,

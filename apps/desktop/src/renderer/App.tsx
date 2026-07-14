@@ -13,6 +13,7 @@ import { PopupHeader } from './components/PopupHeader';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTreeSection } from './components/FileTreeSection';
 import { AnaConversation } from './components/AnaConversation';
+import { Composer } from './components/Composer';
 import { CommandPalette } from './components/CommandPalette';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
@@ -239,6 +240,7 @@ export default function App(): JSX.Element {
   const popupExpanded = useUiStore((s) => s.popupExpanded);
   const setWindowState = useUiStore((s) => s.setWindowState);
   const terminalOpen = useUiStore((s) => s.terminalOpen);
+  const composerOpen = useUiStore((s) => s.composerOpen);
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   const toggleTerminal = useUiStore((s) => s.toggleTerminal);
   const applyPanel = useConversationStore((s) => s.applyPanel);
@@ -465,6 +467,7 @@ export default function App(): JSX.Element {
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <AnaConversation />
                 </div>
+                {composerOpen && !isPopup && <Composer />}
               </aside>
             </Panel>
             <Separator className={`${SEPARATOR_CLASSES} ${isPopup ? 'hidden' : 'w-px'}`} />

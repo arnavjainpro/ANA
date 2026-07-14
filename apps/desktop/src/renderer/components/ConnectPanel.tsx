@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { ChevronDown, Zap, RefreshCw } from 'lucide-react';
 import { useRepoStore } from '../store/repoStore';
 import { isIpcError } from '../lib/ipc';
+import { Button, GithubIcon } from './ui';
 
 /** GitHub connect + repo selection + indexing controls. */
 export function ConnectPanel(): JSX.Element {
@@ -82,47 +84,35 @@ export function ConnectPanel(): JSX.Element {
   const ready = indexStatus === 'ready';
 
   return (
-    <div className="flex flex-col gap-3 border-b border-ana-border bg-ana-panel p-4">
+    <div className="flex flex-col gap-3 border-b border-surface-border bg-surface-raised p-4">
       {!connected ? (
         <div className="flex flex-col gap-2.5">
-          <p className="text-xs leading-relaxed text-ana-text-muted">
+          <p className="text-xs leading-relaxed text-text-secondary">
             Connect your GitHub repository to get started.
           </p>
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={handleConnect}
-            disabled={busy}
-            aria-disabled={busy}
+            loading={busy}
             aria-busy={busy}
             aria-label="Connect GitHub"
-            className="flex items-center justify-center gap-2 rounded-md bg-ana-brand px-3 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-ana-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full"
           >
-            {busy ? (
-              <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-              </svg>
-            ) : (
-              <>
-                <svg aria-hidden="true" className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-                </svg>
-                Connect GitHub
-              </>
-            )}
-          </button>
+            {!busy && <GithubIcon size={14} />}
+            Connect GitHub
+          </Button>
         </div>
       ) : (
         <>
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-ana-text-muted">
+            <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
               Repository
             </label>
             <div className="relative">
               <select
                 value={selectedRepo?.full_name ?? ''}
                 onChange={(e) => handleSelectRepo(e.target.value)}
-                className="w-full appearance-none rounded-md border border-ana-border bg-ana-bg px-3 py-2 pr-8 text-sm text-ana-text outline-none transition-colors duration-150 focus:border-ana-brand-border focus:shadow-focus-brand disabled:opacity-50"
+                className="w-full cursor-pointer appearance-none rounded-md border border-surface-border bg-surface-overlay px-3 py-2 pr-8 text-sm text-text-primary outline-none transition-colors duration-150 hover:bg-surface-hover focus:border-accent-border focus:shadow-focus-brand disabled:opacity-50"
               >
                 <option value="">Choose a repo…</option>
                 {repos.map((repo) => (
@@ -131,46 +121,48 @@ export function ConnectPanel(): JSX.Element {
                   </option>
                 ))}
               </select>
-              <svg
-                aria-hidden="true"
-                className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ana-text-muted"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <ChevronDown
+                size={16}
+                strokeWidth={1.75}
+                aria-hidden
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary"
+              />
             </div>
           </div>
 
           {selectedRepo && (
             <>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={handleIndex}
                 disabled={indexing}
-                aria-disabled={indexing}
                 aria-busy={indexing}
-                className="flex items-center justify-center gap-2 rounded-md border border-ana-border bg-ana-bg px-3 py-2 text-sm font-medium text-ana-text transition-colors duration-150 hover:bg-ana-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full"
               >
-                <svg
-                  aria-hidden="true"
-                  className={`h-4 w-4 text-ana-brand ${indexing ? 'animate-spin' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  {ready ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  )}
-                </svg>
+                {ready ? (
+                  <RefreshCw
+                    size={14}
+                    strokeWidth={1.75}
+                    aria-hidden
+                    className={`text-accent-primary ${indexing ? 'animate-spin' : ''}`}
+                  />
+                ) : (
+                  <Zap
+                    size={14}
+                    strokeWidth={1.75}
+                    aria-hidden
+                    className={`text-accent-primary ${indexing ? 'animate-spin' : ''}`}
+                  />
+                )}
                 {ready ? 'Re-index' : indexing ? 'Indexing…' : 'Index repo'}
-              </button>
+              </Button>
 
               {indexMessage && (
-                <p className={`text-xs leading-relaxed ${indexStatus === 'error' ? 'text-red-400' : 'text-ana-text-muted'}`}>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    indexStatus === 'error' ? 'text-status-danger' : 'text-text-secondary'
+                  }`}
+                >
                   {indexMessage}
                 </p>
               )}

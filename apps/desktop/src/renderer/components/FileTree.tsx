@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { ChevronRight, Settings, Lock, Image, FileText, Files } from 'lucide-react';
 import { useRepoStore } from '../store/repoStore';
 import { useUiStore } from '../store/uiStore';
 import { useBuildStore } from '../store/buildStore';
@@ -66,40 +67,18 @@ function Badge({ text, bg, fg }: { text: string; bg: string; fg: string }): JSX.
   );
 }
 
-/** A monochrome glyph (document, gear, lock) tinted by `color`. */
-function Glyph({ color, children }: { color: string; children: ReactNode }): JSX.Element {
-  return (
-    <svg className="h-4 w-4 flex-shrink-0" style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-const DOC_PATH = (
-  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-);
-
 /** Pick an icon for a filename, matching the VS Code / Seti style at a glance. */
 function fileIcon(name: string): JSX.Element {
   const lower = name.toLowerCase();
   const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.') + 1) : '';
+  const glyph = 'h-4 w-4 flex-shrink-0';
 
-  if (lower === 'package.json' || lower === 'package-lock.json') return <Badge text="{}" bg="#CBCB41" fg="#1a1a1d" />;
-  if (lower.startsWith('.env')) {
-    return (
-      <Glyph color="#8a8a93">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </Glyph>
-    );
-  }
-  if (lower.includes('.lock') || ext === 'lock') {
-    return (
-      <Glyph color="#8a8a93">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </Glyph>
-    );
-  }
+  if (lower === 'package.json' || lower === 'package-lock.json')
+    return <Badge text="{}" bg="#CBCB41" fg="#0D0D0F" />;
+  if (lower.startsWith('.env'))
+    return <Settings size={14} strokeWidth={1.75} aria-hidden className={`${glyph} text-text-tertiary`} />;
+  if (lower.includes('.lock') || ext === 'lock')
+    return <Lock size={14} strokeWidth={1.75} aria-hidden className={`${glyph} text-text-tertiary`} />;
 
   switch (ext) {
     case 'ts':
@@ -111,11 +90,11 @@ function fileIcon(name: string): JSX.Element {
     case 'js':
     case 'mjs':
     case 'cjs':
-      return <Badge text="JS" bg="#F0DB4F" fg="#1a1a1d" />;
+      return <Badge text="JS" bg="#F0DB4F" fg="#0D0D0F" />;
     case 'jsx':
-      return <Badge text="JS" bg="#61DAFB" fg="#1a1a1d" />;
+      return <Badge text="JS" bg="#61DAFB" fg="#0D0D0F" />;
     case 'json':
-      return <Badge text="{}" bg="#CBCB41" fg="#1a1a1d" />;
+      return <Badge text="{}" bg="#CBCB41" fg="#0D0D0F" />;
     case 'md':
     case 'mdx':
       return <Badge text="M" bg="#519ABA" fg="#fff" />;
@@ -137,13 +116,9 @@ function fileIcon(name: string): JSX.Element {
     case 'svg':
     case 'gif':
     case 'webp':
-      return (
-        <Glyph color="#A074C4">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </Glyph>
-      );
+      return <Image size={14} strokeWidth={1.75} aria-hidden className={`${glyph} text-[#A074C4]`} />;
     default:
-      return <Glyph color="#8a8a93">{DOC_PATH}</Glyph>;
+      return <FileText size={14} strokeWidth={1.75} aria-hidden className={`${glyph} text-text-tertiary`} />;
   }
 }
 
@@ -179,7 +154,12 @@ export function FileTree(): JSX.Element {
     });
 
   if (tree.length === 0) {
-    return <p className="px-4 py-3 text-sm text-ana-text-muted">No files loaded yet.</p>;
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+        <Files size={16} strokeWidth={1.75} aria-hidden className="text-text-tertiary" />
+        <p className="text-sm text-text-secondary">No files loaded yet.</p>
+      </div>
+    );
   }
 
   const renderNodes = (nodes: TreeNode[], depth: number): ReactNode =>
@@ -196,19 +176,20 @@ export function FileTree(): JSX.Element {
               onClick={() => toggle(node.path)}
               aria-expanded={isOpen}
               style={{ paddingLeft: pad }}
-              className="group flex w-full items-center gap-1.5 py-1 pr-2 text-left text-ana-text-muted transition-colors duration-100 hover:text-ana-text"
+              className="group flex h-6 w-full cursor-pointer items-center gap-1.5 pr-2 text-left transition-colors duration-100 hover:bg-surface-hover"
               title={node.path}
             >
-              <svg
-                aria-hidden="true"
-                className={`h-3 w-3 flex-shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span className="whitespace-nowrap text-sm font-medium text-ana-text">{node.name}</span>
+              <ChevronRight
+                size={12}
+                strokeWidth={2}
+                aria-hidden
+                className={`flex-shrink-0 text-text-tertiary transition-transform duration-150 ${
+                  isOpen ? 'rotate-90' : ''
+                }`}
+              />
+              <span className="whitespace-nowrap text-sm font-medium text-text-primary">
+                {node.name}
+              </span>
             </button>
             {isOpen && node.children.length > 0 && <ul>{renderNodes(node.children, depth + 1)}</ul>}
           </li>
@@ -225,18 +206,18 @@ export function FileTree(): JSX.Element {
                 : undefined
             }
             style={{ paddingLeft: pad + 18 }}
-            className={`group relative flex w-full items-center gap-1.5 py-1 pr-2 transition-colors duration-100 ${
+            className={`group relative flex h-6 w-full items-center gap-1.5 pr-2 transition-colors duration-100 ${
               buildMode ? 'cursor-pointer' : 'cursor-default'
-            } ${isOpenFile ? 'bg-ana-brand-soft' : 'hover:bg-ana-hover'}`}
+            } ${isOpenFile ? 'bg-accent-muted' : 'hover:bg-surface-hover'}`}
             title={node.path}
           >
             {isOpenFile && (
-              <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-ana-brand" />
+              <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-accent-primary" />
             )}
             {fileIcon(node.name)}
             <span
               className={`flex-1 whitespace-nowrap text-sm ${
-                isOpenFile ? 'text-ana-text' : 'text-ana-text-muted group-hover:text-ana-text'
+                isOpenFile ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'
               }`}
             >
               {node.name}

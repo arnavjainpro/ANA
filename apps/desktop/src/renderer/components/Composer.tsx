@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { useConversationStore, recentHistory } from '../store/conversationStore';
 import { useRepoStore } from '../store/repoStore';
 import { useUiStore } from '../store/uiStore';
 import { useBuildStore } from '../store/buildStore';
 import { isIpcError } from '../lib/ipc';
+import { Spinner, Kbd } from './ui';
 import type { FilePatch } from '../../types';
 
 /** Stagger between per-file narration lines, so changes stream in like live work. */
@@ -96,9 +98,9 @@ export function Composer(): JSX.Element {
   const canSend = ready && !busy && text.trim().length > 0;
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-ana-border bg-ana-panel p-3">
+    <div className="flex flex-col gap-1.5 border-t border-surface-border bg-surface-raised p-3 animate-fade-in-up">
       {/* Input + send share a single bordered shell that lights up on focus. */}
-      <div className="group flex items-center gap-2 rounded-lg border border-ana-border bg-ana-bg px-2 py-1.5 transition-colors duration-150 focus-within:border-ana-brand-border focus-within:shadow-focus-brand">
+      <div className="group flex items-center gap-2 rounded-lg border border-surface-border bg-surface-overlay px-2 py-1.5 transition-colors duration-150 focus-within:border-accent-border focus-within:shadow-focus-brand">
         <input
           type="text"
           value={text}
@@ -113,13 +115,13 @@ export function Composer(): JSX.Element {
             ready
               ? buildMode
                 ? 'Tell Ana what to change…'
-                : 'Ask Ana (Shift+Enter for new line)…'
+                : 'Ask Ana anything…'
               : buildMode
                 ? 'Select your local folder to begin…'
                 : 'Index a repo to begin…'
           }
           disabled={!ready || busy}
-          className="flex-1 bg-transparent px-2 py-1 text-sm text-ana-text outline-none placeholder:text-ana-text-muted disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 bg-transparent px-2 py-1 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-50"
         />
         <button
           type="button"
@@ -130,25 +132,15 @@ export function Composer(): JSX.Element {
           aria-label="Send message"
           className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors duration-150 ${
             canSend
-              ? 'bg-ana-brand text-white hover:bg-ana-brand-hover'
-              : 'cursor-not-allowed bg-ana-hover text-ana-text-muted'
+              ? 'cursor-pointer bg-accent-primary text-white hover:bg-accent-hover'
+              : 'cursor-not-allowed bg-surface-hover text-text-tertiary'
           }`}
         >
-          {busy ? (
-            <svg aria-hidden="true" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-          ) : (
-            <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          )}
+          {busy ? <Spinner size={14} /> : <ArrowRight size={14} strokeWidth={1.75} aria-hidden />}
         </button>
       </div>
-      <p className="px-1 text-[11px] text-ana-text-muted">
-        <kbd className="font-sans font-medium text-ana-text-muted">Shift</kbd> +{' '}
-        <kbd className="font-sans font-medium text-ana-text-muted">Enter</kbd> for a new line
+      <p className="flex items-center gap-1 px-1 text-xs text-text-tertiary">
+        <Kbd>↵</Kbd> to send
       </p>
     </div>
   );

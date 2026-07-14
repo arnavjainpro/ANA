@@ -50,13 +50,13 @@ export function IndexingProgress(): JSX.Element | null {
         if (e.propertyName === 'opacity' && !visible) setMounted(false);
       }}
     >
-      <div className="h-1 w-full overflow-hidden bg-ana-border">
+      <div className="h-1 w-full overflow-hidden bg-surface-overlay">
         <div
-          className="ana-progress-fill h-full bg-ana-brand"
+          className="ana-progress-fill h-full bg-accent-primary"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="bg-ana-panel px-6 py-1 text-xs text-ana-text-muted" aria-live="polite">
+      <p className="bg-surface-raised px-6 py-1 text-xs text-text-secondary" aria-live="polite">
         {indexMessage}
       </p>
     </div>

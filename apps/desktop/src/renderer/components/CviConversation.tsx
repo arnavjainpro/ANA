@@ -29,10 +29,9 @@ interface TavusMessage {
   [key: string]: unknown;
 }
 
-// Temporary: log the raw Tavus events so we can confirm the exact shape in a
-// live call. Filter the renderer DevTools console by "[ana-cvi]". Remove once
-// speech-synced highlighting is verified.
-const DEBUG_CVI = true;
+// Flip on to log the raw Tavus events when debugging speech-synced
+// highlighting. Filter the renderer DevTools console by "[ana-cvi]".
+const DEBUG_CVI = false;
 
 function ReplicaTranscriptBridge(): null {
   const pushUtterance = useConversationStore((s) => s.pushUtterance);
@@ -227,7 +226,7 @@ function CallStage(): JSX.Element {
 
   return (
     <div
-      className={`relative h-full w-full overflow-hidden bg-ana-panel ${
+      className={`relative h-full w-full overflow-hidden bg-surface-raised ${
         isCollapsedPopup ? 'cursor-pointer' : ''
       }`}
       onClick={isCollapsedPopup ? expand : undefined}
@@ -242,7 +241,7 @@ function CallStage(): JSX.Element {
         />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
-          <p className="text-sm text-ana-text-muted">{error ? 'Couldn’t connect' : 'Connecting to Ana…'}</p>
+          <p className="text-sm text-text-secondary">{error ? 'Couldn’t connect' : 'Connecting to Ana…'}</p>
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
       )}
@@ -253,7 +252,7 @@ function CallStage(): JSX.Element {
           type="video"
           mirror
           fit="cover"
-          className={`absolute bottom-3 right-3 h-28 w-40 rounded-lg border border-ana-border object-cover shadow-lg ${
+          className={`absolute bottom-3 right-3 h-28 w-40 rounded-lg border border-surface-border object-cover shadow-lg ${
             isPopup ? 'hidden' : ''
           }`}
         />

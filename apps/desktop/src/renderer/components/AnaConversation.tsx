@@ -75,38 +75,38 @@ export function AnaConversation(): JSX.Element {
   // While a session initializes, show a branded, gently pulsing avatar orb.
   if (sessionStarting) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-5 bg-ana-panel">
+      <div className="flex h-full flex-col items-center justify-center gap-5 bg-surface-raised">
         <div className="relative flex h-20 w-20 items-center justify-center">
           {/* Expanding rings convey "connecting" without a spinner. */}
-          <span className="absolute inset-0 rounded-full bg-ana-brand/15 ana-pulse" />
-          <span className="absolute inset-2 rounded-full bg-ana-brand/25 ana-pulse" style={{ animationDelay: '300ms' }} />
-          <span className="relative h-12 w-12 rounded-full bg-ana-brand" />
+          <span className="absolute inset-0 rounded-full bg-accent-primary/15 ana-pulse" />
+          <span className="absolute inset-2 rounded-full bg-accent-primary/25 ana-pulse" style={{ animationDelay: '300ms' }} />
+          <span className="relative h-12 w-12 rounded-full bg-accent-primary" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-semibold text-ana-text">Connecting to Ana…</p>
-          <p className="mt-1 text-xs text-ana-text-muted">Setting up your session</p>
+          <p className="text-sm font-semibold text-text-primary">Connecting to Ana…</p>
+          <p className="mt-1 text-xs text-text-secondary">Setting up your session</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full animate-fade-in-up flex-col items-center justify-center gap-5 bg-ana-panel px-6">
+    <div className="flex h-full animate-fade-in-up flex-col items-center justify-center gap-5 bg-surface-raised px-6">
       <img
         src={anaAvatar}
         alt=""
-        className="h-20 w-20 rounded-full object-cover ring-1 ring-ana-border"
+        className="h-20 w-20 rounded-full object-cover ring-1 ring-surface-border"
       />
       <div className="text-center">
-        <p className="text-base font-semibold text-ana-text">Start a conversation</p>
-        <p className="mt-1 max-w-xs text-xs leading-relaxed text-ana-text-muted">
+        <p className="text-base font-semibold text-text-primary">Start a conversation</p>
+        <p className="mt-1 max-w-xs text-xs leading-relaxed text-text-secondary">
           Initialize Ana to begin talking through this repository.
         </p>
       </div>
       <button
         type="button"
         onClick={handleStart}
-        className="flex items-center gap-2 rounded-md bg-ana-brand px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-ana-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex cursor-pointer items-center gap-2 rounded-md bg-accent-primary px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg aria-hidden="true" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z" />
