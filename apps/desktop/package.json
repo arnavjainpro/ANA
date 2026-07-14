@@ -23,6 +23,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "jotai": "^2.20.1",
+    "lucide-react": "^1.24.0",
     "mermaid": "^11.4.1",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
