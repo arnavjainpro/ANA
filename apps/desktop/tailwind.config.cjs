@@ -1,33 +1,48 @@
+const t = require('./src/renderer/theme/tokens.json');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./src/renderer/index.html', './src/renderer/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Cursor-inspired professional palette: layered cool-neutral grays
-        // (lifted off pure black) with a single restrained blue accent.
-        ana: {
-          bg: '#1a1a1d',          // Workspace / editor surface (the lighter base)
-          panel: '#141417',       // Bars + sidebar (darker, like an activity bar)
-          border: '#2a2a30',      // Soft, low-contrast hairline borders
-          accent: '#ffffff',      // White — reserved for high-emphasis text
-          text: '#e4e4e7',        // Near-white primary text (cool)
-          'text-muted': '#8a8a93', // Muted cool gray
-          hover: '#232329',       // Subtle hover fill
-          // Blue brand accent (mirrors accent.primary) — used sparingly for the
-          // active nav indicator, primary CTAs, and focus rings. No glow.
-          brand: '#3B82F6',
-          'brand-hover': '#2563EB',
-          'brand-soft': 'rgba(59,130,246,0.12)',
-          'brand-border': 'rgba(59,130,246,0.4)',
-        },
-        // Canonical design-system tokens (diagram panel + going forward).
+        // Semantic design tokens — single source of truth in theme/tokens.json.
+        // Four elevation levels: base (workspace/editor/diagram/terminal),
+        // raised (chrome: sidebar, top bar, panel headers), overlay (nested
+        // cards/rows/inputs), modal (command palette, popovers).
         surface: {
-          base: '#0D0D0F',    // app background
-          raised: '#131316',  // panel background
-          overlay: '#1A1A1F', // card / node background
-          border: '#2A2A32',  // all borders
+          base: t.surface.base,
+          raised: t.surface.raised,
+          overlay: t.surface.overlay,
+          modal: t.surface.modal,
+          border: t.surface.border,
+          'border-strong': t.surface.borderStrong,
+          hover: t.surface.hover,
+          active: t.surface.active,
         },
+        text: {
+          primary: t.text.primary,
+          secondary: t.text.secondary,
+          tertiary: t.text.tertiary,
+          disabled: t.text.disabled,
+        },
+        accent: {
+          primary: t.accent.primary,
+          hover: t.accent.hover,
+          muted: t.accent.muted,
+          border: t.accent.border,
+          glow: t.accent.glow,
+        },
+        status: {
+          success: t.status.success,
+          'success-muted': t.status.successMuted,
+          warning: t.status.warning,
+          'warning-muted': t.status.warningMuted,
+          danger: t.status.danger,
+          'danger-muted': t.status.dangerMuted,
+        },
+        // Diagram domain colors (Understand panel node/edge typing) — not part
+        // of the elevation system, intentionally kept separate.
         node: {
           file: { bg: '#1E2A3A', border: '#3B6FCC', text: '#93C5FD' },
           service: { bg: '#1E2D27', border: '#2D8B5A', text: '#6EE7B7' },
@@ -40,22 +55,30 @@ module.exports = {
           active: '#3B82F6',
           label: '#6B7280',
         },
-        accent: {
-          primary: '#3B82F6', // blue — Ana brand color
-          glow: 'rgba(59,130,246,0.15)',
+        // TEMPORARY migration aliases (Phase 1 → deleted in Phase 7). Every
+        // legacy ana-* class resolves to the new semantic palette so the whole
+        // app re-skins before per-file migration.
+        ana: {
+          bg: t.surface.base,
+          panel: t.surface.raised,
+          border: t.surface.border,
+          text: t.text.primary,
+          'text-muted': t.text.secondary,
+          hover: t.surface.hover,
+          brand: t.accent.primary,
+          'brand-hover': t.accent.hover,
+          'brand-soft': t.accent.muted,
+          'brand-border': t.accent.border,
         },
       },
       boxShadow: {
         node: '0 0 0 1px var(--tw-shadow-color), 0 4px 24px -4px var(--tw-shadow-color)',
-        panel: 'none',
-        // Subtle, non-glowing elevation. Cursor leans on flat fills + hairline
-        // borders rather than coloured halos, so these are quiet drop shadows.
-        'glow-sm': 'none',
-        glow: 'none',
+        // Elevation ramp: quiet drop shadows, no coloured halos.
+        raised: '0 1px 2px rgba(0,0,0,0.4)',
+        overlay: '0 4px 16px -4px rgba(0,0,0,0.5)',
+        modal: `0 0 0 1px ${t.surface.border}, 0 16px 48px -12px rgba(0,0,0,0.7)`,
         'glow-strong': '0 2px 8px -2px rgba(0,0,0,0.5)',
-        // Soft elevation for raised chrome (top bar, composer, cards).
         elevate: '0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.7)',
-        // Functional focus ring (kept for keyboard accessibility), softened.
         'focus-brand': '0 0 0 1px rgba(59,130,246,0.55)',
       },
       keyframes: {
@@ -85,6 +108,7 @@ module.exports = {
         sm: '12px',
         base: '13px',
         lg: '14px',
+        xl: '16px',
       },
     },
   },

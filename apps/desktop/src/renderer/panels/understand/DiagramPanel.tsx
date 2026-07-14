@@ -1036,7 +1036,7 @@ export function DiagramPanel({
   const isScoped = view !== 'overview' && Boolean(focusSubject);
 
   return (
-    <div className="flex h-full flex-col bg-surface-raised shadow-panel">
+    <div className="flex h-full flex-col bg-surface-raised">
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-surface-border bg-surface-overlay px-4 py-2">
         <div className="flex items-center gap-2.5">
