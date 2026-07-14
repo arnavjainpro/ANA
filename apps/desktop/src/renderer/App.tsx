@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+  useGroupRef,
+  usePanelRef,
+  type Layout,
+} from 'react-resizable-panels';
 import { TopBar } from './components/TopBar';
 import { PopupHeader } from './components/PopupHeader';
 import { ConnectPanel } from './components/ConnectPanel';
@@ -16,7 +25,13 @@ import { useBuildStore } from './store/buildStore';
 import { useTerminalStore } from './store/terminalStore';
 import { isIpcError } from './lib/ipc';
 import { speakViaTavus } from './lib/voiceEcho';
+import { ErrorBanner } from './components/ui';
 import type { ConversationTurn, FilePatch } from '../types';
+
+// Shared separator styling: a hairline that highlights on hover/drag. The
+// library provides a larger invisible hit target via resizeTargetMinimumSize.
+const SEPARATOR_CLASSES =
+  'bg-surface-border transition-colors duration-150 hover:bg-accent-primary active:bg-accent-primary';
 
 // Varied lines Ana speaks once a voice change has actually been applied.
 const BUILD_DONE = [
@@ -224,23 +239,73 @@ export default function App(): JSX.Element {
   const popupExpanded = useUiStore((s) => s.popupExpanded);
   const setWindowState = useUiStore((s) => s.setWindowState);
   const terminalOpen = useUiStore((s) => s.terminalOpen);
-  const terminalHeight = useUiStore((s) => s.terminalHeight);
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   const toggleTerminal = useUiStore((s) => s.toggleTerminal);
-  const setTerminalHeight = useUiStore((s) => s.setTerminalHeight);
   const applyPanel = useConversationStore((s) => s.applyPanel);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
   const sessionStarting = useConversationStore((s) => s.sessionStarting);
   const repoError = useRepoStore((s) => s.error);
 
-  const [centerWidth, setCenterWidth] = useState(40);
-  const [dragging, setDragging] = useState(false);
-  const [draggingTerminal, setDraggingTerminal] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
-  const anaPaneRef = useRef<HTMLElement>(null);
-  const workspaceColumnRef = useRef<HTMLDivElement>(null);
   const activeError = error ?? repoError;
   const isPopup = windowMode === 'popup';
+
+  // Imperative panel handles: sidebar/terminal toggles and the popup
+  // presentation are driven by collapse()/expand()/resize() so the JSX tree —
+  // and the live Daily call inside AnaConversation — never changes shape.
+  const sidebarPanelRef = usePanelRef();
+  const anaPanelRef = usePanelRef();
+  const workspacePanelRef = usePanelRef();
+  const terminalPanelRef = usePanelRef();
+  const colsGroupRef = useGroupRef();
+
+  // Persist layouts across launches; skip saves while in popup mode so the
+  // popup's imperative collapse/resize never clobbers the full-window layout.
+  const colsLayout = useDefaultLayout({ id: 'ana-cols', storage: localStorage });
+  const rowsLayout = useDefaultLayout({ id: 'ana-rows', storage: localStorage });
+  const lastFullColsLayout = useRef<Layout | null>(colsLayout.defaultLayout ?? null);
+
+  // Sidebar visibility → panel collapse. Also collapsed for the popup.
+  useEffect(() => {
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    if (sidebarOpen && !isPopup) panel.expand();
+    else panel.collapse();
+  }, [sidebarOpen, isPopup, sidebarPanelRef]);
+
+  // Terminal visibility → panel collapse. expand() restores the previous size;
+  // on the very first open there is none, so fall back to a sensible height.
+  useEffect(() => {
+    const panel = terminalPanelRef.current;
+    if (!panel) return;
+    if (terminalOpen && !isPopup) {
+      panel.expand();
+      if (panel.getSize().inPixels < 50) panel.resize('240px');
+    } else {
+      panel.collapse();
+    }
+  }, [terminalOpen, isPopup, terminalPanelRef]);
+
+  // Popup presentation: Ana pane fills the floating window; expanding the
+  // flyout reveals the workspace next to a fixed-width Ana pane. Returning to
+  // full restores the last full-window column layout.
+  useEffect(() => {
+    const workspace = workspacePanelRef.current;
+    if (!workspace) return;
+    if (isPopup) {
+      if (popupExpanded) {
+        workspace.expand();
+        anaPanelRef.current?.resize('280px');
+      } else {
+        workspace.collapse();
+      }
+    } else {
+      workspace.expand();
+      const saved = lastFullColsLayout.current;
+      if (saved) colsGroupRef.current?.setLayout(saved);
+    }
+  }, [isPopup, popupExpanded, workspacePanelRef, anaPanelRef, colsGroupRef]);
 
   // Move focus to the error message whenever one appears (OAuth / index errors).
   useEffect(() => {
@@ -319,73 +384,6 @@ export default function App(): JSX.Element {
     })();
   }, [setConnected, setRepos]);
 
-  const handleMouseDown = () => {
-    setDragging(true);
-  };
-
-  useEffect(() => {
-    if (!dragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const container = document.getElementById('main-content');
-      if (!container) return;
-      
-      const rect = container.getBoundingClientRect();
-      // Measure from the Ana pane's own left edge, not the container's: the
-      // container includes the fixed left sidebar (and the right file viewer),
-      // so using the container left over-counts the sidebar width and slams the
-      // pane to the clamp. The pane's actual left edge already accounts for it.
-      const anaLeft = anaPaneRef.current?.getBoundingClientRect().left ?? rect.left;
-      const newWidth = ((e.clientX - anaLeft) / rect.width) * 100;
-
-      if (newWidth > 20 && newWidth < 80) {
-        setCenterWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [dragging]);
-
-  const handleTerminalMouseDown = () => {
-    setDraggingTerminal(true);
-  };
-
-  useEffect(() => {
-    if (!draggingTerminal) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const container = workspaceColumnRef.current;
-      if (!container) return;
-      // The panel is pinned to the bottom of this column, so its height is the
-      // distance from the column's bottom edge up to the cursor — dragging the
-      // handle up (cursor Y decreases) grows the terminal.
-      const rect = container.getBoundingClientRect();
-      setTerminalHeight(rect.bottom - e.clientY);
-    };
-
-    const handleMouseUp = () => {
-      setDraggingTerminal(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [draggingTerminal, setTerminalHeight]);
-
   // Cmd+` / Ctrl+` toggles the integrated terminal, VS Code style.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
@@ -399,94 +397,122 @@ export default function App(): JSX.Element {
   }, [toggleTerminal]);
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-ana-bg text-ana-text">
+    <div className="flex h-screen w-screen flex-col bg-surface-base text-text-primary">
       {isPopup ? <PopupHeader /> : <TopBar />}
 
-      <div ref={workspaceColumnRef} className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div id="main-content" className="flex flex-1 min-h-0 overflow-hidden">
-        {sidebarOpen && !isPopup && (
-          <aside
-            aria-label="Repository"
-            className="w-80 flex flex-col border-r border-ana-border bg-ana-panel overflow-hidden flex-shrink-0"
+      {/* Both PanelGroups render unconditionally in full AND popup modes — the
+          popup presentation is driven purely by imperative collapse/resize so
+          the live Daily call inside AnaConversation never unmounts. */}
+      <Group
+        orientation="vertical"
+        id="ana-rows"
+        className="flex-1 min-h-0"
+        defaultLayout={rowsLayout.defaultLayout}
+        onLayoutChanged={(layout) => {
+          if (useUiStore.getState().windowMode !== 'popup') rowsLayout.onLayoutChanged(layout);
+        }}
+        resizeTargetMinimumSize={{ coarse: 24, fine: 8 }}
+      >
+        <Panel id="main" minSize="30%">
+          <Group
+            orientation="horizontal"
+            id="ana-cols"
+            groupRef={colsGroupRef}
+            className="h-full"
+            defaultLayout={colsLayout.defaultLayout}
+            onLayoutChanged={(layout) => {
+              if (useUiStore.getState().windowMode !== 'popup') {
+                lastFullColsLayout.current = layout;
+                colsLayout.onLayoutChanged(layout);
+              }
+            }}
+            resizeTargetMinimumSize={{ coarse: 24, fine: 8 }}
           >
-            <ConnectPanel />
-            <FileTreeSection />
-          </aside>
-        )}
-
-        {/* This aside (and AnaConversation inside it) must stay mounted across
-            full ↔ popup — unmounting drops the live Daily call. Only classes
-            and inline width change between presentations. */}
-        <aside
-          ref={anaPaneRef}
-          aria-label="Ana"
-          aria-busy={sessionStarting}
-          className={`flex flex-col bg-ana-panel overflow-hidden ${
-            isPopup
-              ? popupExpanded
-                ? 'w-[280px] flex-shrink-0 border-r border-ana-border'
-                : 'flex-1'
-              : 'border-r border-ana-border'
-          }`}
-          style={isPopup ? undefined : { width: `${centerWidth}%` }}
-        >
-          <div className={isPopup ? 'hidden' : ''}>
-            <RefreshContext />
-          </div>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <AnaConversation />
-          </div>
-        </aside>
-
-        <div
-          aria-hidden="true"
-          onMouseDown={handleMouseDown}
-          className={`w-1 cursor-col-resize bg-ana-border transition-colors hover:bg-ana-brand ${
-            dragging ? 'bg-ana-brand' : ''
-          } ${isPopup ? 'hidden' : ''}`}
+            <Panel
+              id="sidebar"
+              panelRef={sidebarPanelRef}
+              collapsible
+              collapsedSize={0}
+              defaultSize="22%"
+              minSize="14%"
+              maxSize="32%"
+              onResize={(size) => {
+                // Dragging the sidebar shut should flip the TopBar toggle too.
+                if (useUiStore.getState().windowMode !== 'popup') {
+                  const open = size.inPixels > 1;
+                  if (open !== useUiStore.getState().sidebarOpen) setSidebarOpen(open);
+                }
+              }}
+            >
+              <aside
+                aria-label="Repository"
+                className="flex h-full flex-col overflow-hidden border-r border-surface-border bg-surface-raised"
+              >
+                <ConnectPanel />
+                <FileTreeSection />
+              </aside>
+            </Panel>
+            <Separator className={`${SEPARATOR_CLASSES} ${isPopup || !sidebarOpen ? 'hidden' : 'w-px'}`} />
+            <Panel id="ana" panelRef={anaPanelRef} defaultSize="32%" minSize="18%">
+              <aside
+                aria-label="Ana"
+                aria-busy={sessionStarting}
+                className="flex h-full flex-col overflow-hidden border-r border-surface-border bg-surface-raised"
+              >
+                <div className={isPopup ? 'hidden' : ''}>
+                  <RefreshContext />
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <AnaConversation />
+                </div>
+              </aside>
+            </Panel>
+            <Separator className={`${SEPARATOR_CLASSES} ${isPopup ? 'hidden' : 'w-px'}`} />
+            <Panel id="workspace" panelRef={workspacePanelRef} collapsible collapsedSize={0} minSize="25%">
+              <main
+                id="ana-workspace"
+                aria-label="Workspace"
+                aria-busy={isPanelLoading}
+                className="relative h-full min-h-0 overflow-hidden bg-surface-base"
+              >
+                <IndexingProgress />
+                <WorkspaceContent />
+              </main>
+            </Panel>
+          </Group>
+        </Panel>
+        <Separator
+          className={`${SEPARATOR_CLASSES} ${!terminalOpen || isPopup ? 'hidden' : 'h-px'}`}
         />
-
-        {/* Hidden (not unmounted) when the popup is collapsed so Monaco/diagram
-            state survives expand/collapse. */}
-        <main
-          id="ana-workspace"
-          aria-label="Workspace"
-          aria-busy={isPanelLoading}
-          className={`relative flex-1 min-h-0 overflow-hidden bg-ana-bg ${
-            isPopup && !popupExpanded ? 'hidden' : ''
-          }`}
+        {/* Collapsed (not unmounted) when closed so the shell session inside
+            TerminalPanel survives the panel being toggled. */}
+        <Panel
+          id="terminal"
+          panelRef={terminalPanelRef}
+          collapsible
+          collapsedSize={0}
+          defaultSize={0}
+          maxSize="60%"
+          onResize={(size) => {
+            // Dragging the terminal shut should flip terminalOpen so Cmd+`
+            // re-opens it — but only user drags in full mode, never the
+            // popup's imperative collapse.
+            if (useUiStore.getState().windowMode !== 'popup') {
+              const open = size.inPixels > 1;
+              if (open !== useUiStore.getState().terminalOpen) {
+                useUiStore.getState().setTerminalOpen(open);
+              }
+            }
+          }}
         >
-          <IndexingProgress />
-          <WorkspaceContent />
-        </main>
-      </div>
-
-        {/* Always mounted (not conditionally rendered) so the shell session
-            inside TerminalPanel survives the panel being toggled closed —
-            only visibility and height change here. */}
-        <div className={`flex flex-shrink-0 flex-col ${!terminalOpen || isPopup ? 'hidden' : ''}`}>
-          <div
-            aria-hidden="true"
-            onMouseDown={handleTerminalMouseDown}
-            className={`h-1 cursor-row-resize bg-ana-border transition-colors hover:bg-ana-brand ${
-              draggingTerminal ? 'bg-ana-brand' : ''
-            }`}
-          />
-          <div style={{ height: terminalHeight }} className="overflow-hidden border-t border-ana-border">
+          <div className="h-full overflow-hidden border-t border-surface-border">
             <TerminalPanel />
           </div>
-        </div>
-      </div>
+        </Panel>
+      </Group>
 
       {activeError && (
-        <div
-          ref={errorRef}
-          tabIndex={-1}
-          aria-live="polite"
-          className="border-t border-red-900/30 bg-red-950/20 px-4 py-2 text-sm text-red-400"
-        >
-          {activeError}
-        </div>
+        <ErrorBanner ref={errorRef} message={activeError} className="border-t" />
       )}
 
       <CommandPalette />
