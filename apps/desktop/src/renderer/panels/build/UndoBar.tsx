@@ -1,3 +1,4 @@
+import { Undo2 } from 'lucide-react';
 import { useBuildStore } from '../../store/buildStore';
 import { useConversationStore } from '../../store/conversationStore';
 
@@ -22,18 +23,18 @@ export function UndoBar(): JSX.Element {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-ana-border bg-ana-panel px-4 py-2">
+    <div className="flex items-center justify-between gap-3 border-t border-surface-border bg-surface-raised px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span
           aria-hidden="true"
           className={`h-2 w-2 flex-shrink-0 rounded-full ${
-            canUndo ? 'bg-yellow-400' : 'bg-ana-border'
+            canUndo ? 'bg-status-warning' : 'bg-surface-border'
           }`}
         />
-        <p aria-live="polite" className="truncate text-xs text-ana-text-muted">
+        <p aria-live="polite" className="truncate text-xs text-text-secondary">
           {canUndo && lastSummary ? (
             <>
-              Last change: <span className="text-ana-text">{lastSummary}</span>
+              Last change: <span className="text-text-primary">{lastSummary}</span>
             </>
           ) : (
             'No changes to undo'
@@ -46,15 +47,13 @@ export function UndoBar(): JSX.Element {
         disabled={disabled}
         aria-disabled={disabled}
         aria-label="Undo last change"
-        className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
+        className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
           disabled
-            ? 'cursor-not-allowed border-ana-border text-ana-text-muted opacity-50'
-            : 'border-ana-brand-border text-ana-brand hover:bg-ana-brand hover:text-white'
+            ? 'cursor-not-allowed border-surface-border text-text-tertiary opacity-50'
+            : 'cursor-pointer border-accent-border text-accent-primary hover:bg-accent-primary hover:text-white'
         }`}
       >
-        <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v1M3 10l4-4M3 10l4 4" />
-        </svg>
+        <Undo2 size={12} strokeWidth={2} aria-hidden />
         Undo
       </button>
     </div>

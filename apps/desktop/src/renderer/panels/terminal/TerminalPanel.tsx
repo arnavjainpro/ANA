@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { X } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { useTerminalStore } from '../../store/terminalStore';
+import { xtermTheme } from '../../theme/tokens';
 
 /**
  * A real shell (PTY), same trust boundary as opening Terminal.app — both the
@@ -34,12 +36,7 @@ export function TerminalPanel(): JSX.Element {
       fontFamily: '"Fira Code", Monaco, monospace',
       fontSize: 12,
       scrollback: 5000,
-      theme: {
-        background: '#1a1a1d',
-        foreground: '#e4e4e7',
-        cursor: '#3B82F6',
-        selectionBackground: 'rgba(59,130,246,0.25)',
-      },
+      theme: xtermTheme,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -108,23 +105,21 @@ export function TerminalPanel(): JSX.Element {
   const setTerminalOpen = useUiStore((s) => s.setTerminalOpen);
 
   return (
-    <div className="flex h-full flex-col bg-ana-bg">
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-ana-border bg-ana-panel px-3 py-1.5">
-        <span className="text-xs font-medium uppercase tracking-wide text-ana-text-muted">Terminal</span>
+    <div className="flex h-full flex-col bg-surface-base">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-surface-border bg-surface-raised px-3 py-1.5">
+        <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">Terminal</span>
         <button
           type="button"
           onClick={() => setTerminalOpen(false)}
           aria-label="Close terminal"
           title="Close terminal (Ctrl+`)"
-          className="flex h-5 w-5 items-center justify-center rounded text-ana-text-muted transition-colors duration-150 hover:bg-ana-hover hover:text-ana-text"
+          className="flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-text-primary"
         >
-          <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X size={14} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
       {error ? (
-        <div className="px-3 py-2 text-xs text-red-400">{error}</div>
+        <div className="px-3 py-2 text-xs text-status-danger">{error}</div>
       ) : (
         <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 py-1" />
       )}

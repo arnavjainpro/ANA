@@ -23,13 +23,13 @@ mermaid.initialize({
     mergeEdges: true,
   },
   themeVariables: {
-    background: '#0e0e11',
+    background: '#0d0d0f',
     primaryColor: '#182338',
     primaryBorderColor: '#3B6FCC',
     primaryTextColor: '#E6E8EC',
     lineColor: '#5A6072',
-    edgeLabelBackground: '#16161b',
-    clusterBkg: '#121217',
+    edgeLabelBackground: '#131316',
+    clusterBkg: '#131316',
     clusterBorder: '#2A2A38',
     fontFamily: 'Inter Variable, Inter, system-ui, sans-serif',
     fontSize: '15px',
@@ -50,7 +50,7 @@ mermaid.initialize({
 });
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const SVG_BACKGROUND = '#0e0e11';
+const SVG_BACKGROUND = '#0d0d0f';
 const SVG_EDGE_COLOR = '#5A6072';
 const SVG_EDGE_LABEL = '#9AA0AE';
 const HIGHLIGHT_COLOR = '#3B82F6';

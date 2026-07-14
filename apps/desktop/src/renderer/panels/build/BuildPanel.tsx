@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
+import { Hammer } from 'lucide-react';
 import { useRepoStore } from '../../store/repoStore';
 import { useBuildStore } from '../../store/buildStore';
 import { useUiStore } from '../../store/uiStore';
 import { ChangedFilesList } from './ChangedFilesList';
 import { CodeEditor } from './CodeEditor';
 import { UndoBar } from './UndoBar';
+import { Button, EmptyState, ErrorBanner, PanelHeader } from '../../components/ui';
 
 /**
  * Build mode right-panel: read-only Monaco editor + undo bar.
@@ -41,44 +43,40 @@ export function BuildPanel(): JSX.Element {
 
   if (!selectedRepo) {
     return (
-      <div className="flex h-full flex-col bg-ana-bg">
+      <div className="flex h-full flex-col bg-surface-base">
         <PanelHeader title="Build" subtitle="Ana edits your local working copy" />
-        <div className="flex flex-1 items-center justify-center p-8 text-center">
-          <p className="text-sm text-ana-text-muted">
-            Connect and select a repository to start browsing.
-          </p>
-        </div>
+        <EmptyState
+          icon={<Hammer size={20} strokeWidth={1.75} aria-hidden />}
+          title="Nothing to build yet"
+          description="Connect and select a repository to start browsing."
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-ana-bg">
+    <div className="flex h-full flex-col bg-surface-base">
       <PanelHeader title="Build" subtitle={selectedRepo.full_name} />
 
       {/* Inline local-folder prompt — only shown when Ana needs to apply changes */}
       {!repoPath && (
-        <div className="flex flex-shrink-0 items-center gap-3 border-b border-ana-border bg-ana-panel px-4 py-2">
-          <p className="flex-1 text-xs text-ana-text-muted">
+        <div className="flex flex-shrink-0 items-center gap-3 border-b border-surface-border bg-surface-raised px-4 py-2">
+          <p className="flex-1 text-xs text-text-secondary">
             Select your local clone so Ana can apply changes.
           </p>
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => void selectRepoPath(selectedRepo.full_name)}
             disabled={selectingPath}
-            aria-disabled={selectingPath}
-            className="flex-shrink-0 rounded-md bg-ana-brand px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-ana-brand-hover disabled:opacity-50"
+            className="flex-shrink-0"
           >
             {selectingPath ? 'Opening…' : 'Select folder'}
-          </button>
+          </Button>
         </div>
       )}
 
-      {error && (
-        <p className="flex-shrink-0 border-b border-red-900/30 bg-red-950/20 px-4 py-1.5 text-xs text-red-400">
-          {error}
-        </p>
-      )}
+      {error && <ErrorBanner message={error} className="flex-shrink-0 border-b" />}
 
       <ChangedFilesList />
       <div className="min-h-0 flex-1">
@@ -102,15 +100,4 @@ function pickDefaultFile(tree: { path: string; type: string }[]): string | null 
     if (fileset.has(name)) return name;
   }
   return files[0] ?? null;
-}
-
-function PanelHeader({ title, subtitle }: { title: string; subtitle: string }): JSX.Element {
-  return (
-    <div className="border-b border-ana-border bg-ana-panel px-6 py-3">
-      <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">
-        {title}
-      </h2>
-      <p className="mt-0.5 truncate text-xs text-ana-text-muted">{subtitle}</p>
-    </div>
-  );
 }

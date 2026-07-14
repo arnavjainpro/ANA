@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { ChevronRight, Check, ClipboardList, ListTodo } from 'lucide-react';
 import { useConversationStore } from '../../store/conversationStore';
 import { FadeIn } from '../../components/FadeIn';
+import { EmptyState, PanelHeader } from '../../components/ui';
 
 /** Interactive planning canvas: user stories, acceptance criteria, task list. */
 export function WhiteboardPanel(): JSX.Element {
@@ -9,21 +11,13 @@ export function WhiteboardPanel(): JSX.Element {
 
   if (!whiteboard || whiteboard.stories.length === 0) {
     return (
-      <FadeIn className="flex h-full flex-col bg-ana-bg">
-        <div className="border-b border-ana-border bg-ana-panel px-6 py-3">
-          <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">Plan</h2>
-          <p className="mt-0.5 text-xs text-ana-text-muted">User stories &amp; implementation tasks</p>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-ana-border bg-ana-panel">
-            <svg aria-hidden="true" className="h-6 w-6 text-ana-text-muted" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m-6-8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
-            </svg>
-          </span>
-          <p className="max-w-xs text-sm leading-relaxed text-ana-text-muted">
-            Describe a feature and Ana will build a plan here.
-          </p>
-        </div>
+      <FadeIn className="flex h-full flex-col bg-surface-base">
+        <PanelHeader title="Plan" subtitle="User stories & implementation tasks" />
+        <EmptyState
+          icon={<ClipboardList size={20} strokeWidth={1.75} aria-hidden />}
+          title="No plan yet"
+          description="Describe a feature and Ana will build a plan here."
+        />
       </FadeIn>
     );
   }
@@ -46,51 +40,46 @@ export function WhiteboardPanel(): JSX.Element {
   };
 
   return (
-    <FadeIn className="flex h-full flex-col bg-ana-bg">
-      {/* Header */}
-      <div className="border-b border-ana-border bg-ana-panel/80 px-6 py-3.5 backdrop-blur-md">
-        <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight text-ana-text outline-none">Plan</h2>
-        <p className="mt-0.5 text-xs text-ana-text-muted">User stories &amp; implementation tasks</p>
-      </div>
+    <FadeIn className="flex h-full flex-col bg-surface-base">
+      <PanelHeader title="Plan" subtitle="User stories & implementation tasks" />
 
       {/* Content: Stories */}
-      <div className="flex-1 overflow-auto">
-        <div className="divide-y divide-ana-border">
+      <div className="flex-1 overflow-auto p-4">
+        <div className="flex flex-col gap-3">
           {whiteboard.stories.map((story) => {
             const isExpanded = expandedStories.has(story.id);
             const criteria = criteriaFor(story.id);
             const tasks = tasksFor(story.id);
 
             return (
-              <div key={story.id} className="border-b border-ana-border">
+              <div
+                key={story.id}
+                className="overflow-hidden rounded-lg border border-surface-border bg-surface-overlay shadow-raised"
+              >
                 {/* Story Header */}
                 <button
                   type="button"
                   onClick={() => toggleStory(story.id)}
                   aria-expanded={isExpanded}
-                  className="w-full px-6 py-4 text-left transition-colors hover:bg-ana-hover"
+                  className="w-full cursor-pointer px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-hover"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="pt-1">
-                      <svg
-                        aria-hidden="true"
-                        className={`w-4 h-4 text-ana-text-muted transition-transform ${
-                          isExpanded ? 'rotate-90' : ''
-                        }`}
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
+                    <ChevronRight
+                      size={16}
+                      strokeWidth={1.75}
+                      aria-hidden
+                      className={`mt-1 flex-shrink-0 text-text-tertiary transition-transform duration-150 ${
+                        isExpanded ? 'rotate-90' : ''
+                      }`}
+                    />
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="inline-block rounded-md bg-ana-brand-soft px-2 py-0.5 text-xs font-semibold text-ana-brand ring-1 ring-inset ring-ana-brand-border">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="inline-block rounded-md bg-accent-muted px-2 py-0.5 text-xs font-semibold text-accent-primary ring-1 ring-inset ring-accent-border">
                           {story.id}
                         </span>
-                        <span className="text-xs text-ana-text-muted">As {story.as}</span>
+                        <span className="text-xs text-text-secondary">As {story.as}</span>
                       </div>
-                      <p className="text-sm text-ana-text">
+                      <p className="text-sm text-text-primary">
                         I want <span className="font-semibold">{story.want}</span> so that {story.so}
                       </p>
                     </div>
@@ -99,20 +88,18 @@ export function WhiteboardPanel(): JSX.Element {
 
                 {/* Expanded Content */}
                 {isExpanded && (
-                  <div className="px-6 py-4 bg-ana-panel/50 space-y-4">
+                  <div className="flex flex-col gap-4 border-t border-surface-border px-4 py-4">
                     {/* Acceptance Criteria */}
                     {criteria.length > 0 && (
                       <div>
-                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ana-text-muted">
-                          <svg aria-hidden="true" className="h-3.5 w-3.5 text-ana-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                          <Check size={12} strokeWidth={2.5} aria-hidden className="text-accent-primary" />
                           Acceptance Criteria
                         </h4>
-                        <ul className="space-y-1">
+                        <ul className="flex flex-col gap-1">
                           {criteria.map((item, i) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-ana-text">
-                              <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-ana-brand" />
+                            <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
+                              <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-accent-primary" />
                               <span>{item}</span>
                             </li>
                           ))}
@@ -123,29 +110,27 @@ export function WhiteboardPanel(): JSX.Element {
                     {/* Tasks */}
                     {tasks.length > 0 && (
                       <div>
-                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ana-text-muted">
-                          <svg aria-hidden="true" className="h-3.5 w-3.5 text-ana-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                          </svg>
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                          <ListTodo size={12} strokeWidth={2} aria-hidden className="text-accent-primary" />
                           Implementation Tasks
                         </h4>
-                        <div className="space-y-1.5">
+                        <div className="flex flex-col gap-1.5">
                           {tasks.map((task) => (
                             <div
                               key={task.id}
-                              className="p-2.5 rounded border border-ana-border bg-ana-bg hover:bg-ana-hover transition-colors"
+                              className="rounded-md border border-surface-border bg-surface-raised p-2.5 transition-colors duration-150 hover:bg-surface-hover"
                             >
                               <div className="flex items-start gap-2">
                                 <input
                                   type="checkbox"
-                                  className="mt-0.5 h-3.5 w-3.5 cursor-pointer rounded border-ana-border accent-ana-brand"
+                                  className="mt-0.5 h-3.5 w-3.5 rounded border-surface-border accent-accent-primary"
                                   disabled
                                 />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-ana-text truncate">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold text-text-primary">
                                     {task.title}
                                   </p>
-                                  <p className="text-xs text-ana-text-muted mt-0.5">
+                                  <p className="mt-0.5 text-xs text-text-secondary">
                                     {task.detail}
                                   </p>
                                 </div>
