@@ -5,17 +5,20 @@
   "description": "Ana — a voice-first AI coding partner for non-technical people",
   "workspaces": [
     "apps/desktop",
-    "apps/backend"
+    "apps/backend",
+    "apps/web"
   ],
   "scripts": {
     "dev": "concurrently -n backend,desktop -c blue,green \"npm:dev:backend\" \"npm:dev:desktop\"",
     "dev:backend": "npm run dev --workspace apps/backend",
     "dev:desktop": "npm run dev --workspace apps/desktop",
+    "dev:web": "npm run dev --workspace apps/web",
     "build": "npm run build --workspace apps/backend && npm run build --workspace apps/desktop",
     "build:backend": "npm run build --workspace apps/backend",
     "build:desktop": "npm run build --workspace apps/desktop",
+    "build:web": "npm run build --workspace apps/web",
     "package": "npm run package --workspace apps/desktop",
-    "typecheck": "npm run typecheck --workspace apps/backend && npm run typecheck --workspace apps/desktop"
+    "typecheck": "npm run typecheck --workspace apps/backend && npm run typecheck --workspace apps/desktop && npm run typecheck --workspace apps/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
