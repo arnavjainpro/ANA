@@ -17,6 +17,8 @@ import { SettingsView } from './panels/settings/SettingsView';
 import { AnaConversation } from './components/AnaConversation';
 import { Composer } from './components/Composer';
 import { CommandPalette } from './components/CommandPalette';
+import { ShortcutsHelp } from './components/ShortcutsHelp';
+import { ToastHost } from './components/ToastHost';
 import { IndexingProgress } from './components/IndexingProgress';
 import { RefreshContext } from './components/RefreshContext';
 import { WorkspaceContent } from './components/WorkspaceContent';
@@ -28,8 +30,17 @@ import { useBuildStore } from './store/buildStore';
 import { useTerminalStore } from './store/terminalStore';
 import { isIpcError } from './lib/ipc';
 import { speakViaTavus } from './lib/voiceEcho';
+import { pushToast } from './store/toastStore';
 import { ErrorBanner } from './components/ui';
-import type { ConversationTurn, FilePatch } from '../types';
+import type { ConversationTurn, FilePatch, Mode } from '../types';
+
+/** True when a keystroke lands in a text field, so global shortcuts stay out of the way. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+}
 
 // Shared separator styling: a hairline that highlights on hover/drag. The
 // library provides a larger invisible hit target via resizeTargetMinimumSize.
@@ -162,15 +173,18 @@ async function handleVoiceCreateProject(
   useUiStore.getState().setActiveMode('Build');
 
   if (result.warning) {
+    pushToast(`${scaffold.projectName} created locally — GitHub push pending`, 'info');
     say(
       `${scaffold.projectName} is ready on your computer, but I couldn't push it to GitHub yet — we can retry that later. Let me show you.`,
     );
   } else {
+    pushToast(`${scaffold.projectName} created on GitHub`, 'success');
     say(`${scaffold.projectName} is live on GitHub. Let me show you.`);
     // Index in the background so Ana can answer questions about the new code.
     void window.ana.repo.index(result.repo.full_name).then((done) => {
       if (isIpcError(done)) return;
       useRepoStore.getState().setRepoId(done.repoId);
+      pushToast(`Indexed ${result.repo.full_name}`, 'success');
       void window.ana.conversation.syncRepo({
         repoId: done.repoId,
         repoFullName: result.repo.full_name,
@@ -389,12 +403,27 @@ export default function App(): JSX.Element {
     })();
   }, [setConnected, setRepos]);
 
-  // Cmd+` / Ctrl+` toggles the integrated terminal, VS Code style.
+  // Global keyboard shortcuts: Cmd+` toggles the terminal (VS Code style),
+  // Cmd+1/2/3 switch modes, and `?` opens the shortcuts cheatsheet.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key === '`') {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === '`') {
         e.preventDefault();
         toggleTerminal();
+        return;
+      }
+      if (mod && (e.key === '1' || e.key === '2' || e.key === '3')) {
+        e.preventDefault();
+        const modes: Mode[] = ['Understand', 'Plan', 'Build'];
+        const mode = modes[Number(e.key) - 1];
+        if (mode) useUiStore.getState().setMode(mode);
+        return;
+      }
+      // `?` opens the cheatsheet, but not while typing in a field.
+      if (e.key === '?' && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        useUiStore.getState().setShortcutsOpen(true);
       }
     }
     window.addEventListener('keydown', handleKeyDown);
@@ -523,6 +552,8 @@ export default function App(): JSX.Element {
       )}
 
       <CommandPalette />
+      <ShortcutsHelp />
+      <ToastHost />
       {settingsOpen && <SettingsView />}
     </div>
   );

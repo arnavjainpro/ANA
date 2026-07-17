@@ -13,9 +13,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    'bg-accent-primary text-white hover:bg-accent-hover active:bg-accent-hover disabled:bg-surface-active disabled:text-text-disabled',
+    'bg-accent-primary text-white hover:bg-accent-hover hover:shadow-raised active:bg-accent-hover disabled:bg-surface-active disabled:text-text-disabled disabled:shadow-none',
   secondary:
-    'bg-surface-overlay text-text-primary border border-surface-border hover:bg-surface-hover active:bg-surface-active disabled:text-text-disabled',
+    'bg-surface-overlay text-text-primary border border-surface-border hover:bg-surface-hover hover:shadow-raised active:bg-surface-active disabled:text-text-disabled disabled:shadow-none',
   ghost:
     'text-text-secondary hover:bg-surface-hover hover:text-text-primary active:bg-surface-active disabled:text-text-disabled',
   danger:
@@ -40,7 +40,7 @@ export function Button({
     <button
       type="button"
       disabled={disabled || loading}
-      className={`inline-flex cursor-pointer items-center justify-center font-medium transition-colors duration-150 disabled:cursor-not-allowed ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex cursor-pointer items-center justify-center font-medium transition-[colors,box-shadow,transform] duration-150 ease-emphasized active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...rest}
     >
       {loading ? <Spinner size={size === 'sm' ? 12 : 14} /> : null}

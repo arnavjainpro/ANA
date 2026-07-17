@@ -84,7 +84,7 @@ export function TopBar(): JSX.Element {
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0.5 left-0.5 rounded-md bg-surface-active shadow-raised transition-transform duration-200 ease-out"
+          className="pointer-events-none absolute inset-y-0.5 left-0.5 rounded-md bg-surface-active shadow-raised transition-transform duration-[250ms] ease-emphasized"
           style={{
             width: `calc((100% - 0.25rem) / ${MODES.length})`,
             transform: `translateX(${activeIndex * 100}%)`,

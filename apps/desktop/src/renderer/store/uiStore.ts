@@ -59,6 +59,10 @@ interface UiState {
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
 
+  /** Keyboard-shortcuts cheatsheet modal (opened with `?` or from the palette). */
+  shortcutsOpen: boolean;
+  setShortcutsOpen: (open: boolean) => void;
+
   /** App-wide dark/light theme, persisted to localStorage. */
   theme: ThemeName;
   setTheme: (theme: ThemeName) => void;
@@ -93,6 +97,9 @@ export const useUiStore = create<UiState>((set) => ({
 
   settingsOpen: false,
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  shortcutsOpen: false,
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
 
   theme: loadStoredTheme(),
   setTheme: (theme) => {
