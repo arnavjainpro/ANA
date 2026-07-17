@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ConversationTurn, FilePatch, GitStatus, RepoTreeNode } from '../../types';
 import { isIpcError } from '../lib/ipc';
+import { pushToast } from './toastStore';
 
 interface BuildState {
   /** Stable id for this Build session's undo history. */
@@ -197,6 +198,8 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       }));
       void get().refreshGitStatus();
       void get().loadLocalTree();
+      const n = result.patches.length;
+      pushToast(`Applied ${n} change${n === 1 ? '' : 's'}`, 'success');
     } else {
       set({ lastPatches: [] });
     }
@@ -222,6 +225,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       }));
       void get().refreshGitStatus();
       void get().loadLocalTree();
+      pushToast('Reverted last change', 'info');
     }
     return result.spoken;
   },
@@ -245,6 +249,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       }));
       void get().refreshGitStatus();
       void get().loadLocalTree();
+      pushToast('Reapplied change', 'info');
     }
     return result.spoken;
   },
