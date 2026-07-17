@@ -1,23 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { useUiStore } from '../store/uiStore';
 import { FileTree } from './FileTree';
 
 /**
- * Collapsible "Files" section in the left sidebar. The file list is loaded as
- * soon as a repo is selected, but it stays out of the way in Understand/Plan
- * (where files aren't the subject) and auto-expands in Build (where you browse
- * and open the file Ana is editing). The user can still toggle it manually; a
- * manual toggle persists until the next mode change.
+ * Collapsible "Files" section in the left sidebar. Purely user-toggled — its
+ * expanded state stays constant across Understand/Plan/Build so the sidebar
+ * never shifts on a mode switch.
  */
 export function FileTreeSection(): JSX.Element {
-  const buildMode = useUiStore((s) => s.activeMode === 'Build');
-  const [expanded, setExpanded] = useState(buildMode);
-
-  // Follow the mode: open in Build, closed elsewhere.
-  useEffect(() => {
-    setExpanded(buildMode);
-  }, [buildMode]);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className={`flex min-h-0 flex-col ${expanded ? 'flex-1' : ''}`}>

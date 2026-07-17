@@ -14,7 +14,7 @@ export function AccountFooter(): JSX.Element {
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
 
   return (
-    <div className="flex flex-shrink-0 items-center gap-2 border-t border-surface-border bg-surface-raised px-3 py-2">
+    <div className="mt-auto flex flex-shrink-0 items-center gap-2 border-t border-surface-border bg-surface-raised px-3 py-2">
       <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-overlay text-text-tertiary">
         {connected && login ? (
           <img src={`https://github.com/${login}.png?size=64`} alt="" className="h-full w-full object-cover" />
