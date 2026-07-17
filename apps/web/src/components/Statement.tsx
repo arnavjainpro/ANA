@@ -50,7 +50,7 @@ function ChatBubble({ deco }: { deco: Deco }) {
 
 export default function Statement() {
   return (
-    <section className="relative flex min-h-screen items-center overflow-hidden py-40">
+    <section className="relative flex items-center overflow-hidden py-24 lg:min-h-screen lg:py-40">
       {decos.map((deco) => (
         <div key={deco.id} className={`absolute hidden items-center lg:flex ${deco.position}`}>
           {deco.text ? (

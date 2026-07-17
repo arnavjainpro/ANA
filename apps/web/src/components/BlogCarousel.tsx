@@ -37,7 +37,7 @@ export default function BlogCarousel() {
 
   return (
     <section id="blog" className="px-4 pb-12 md:px-8">
-      <div className="mx-auto grid max-w-[100rem] gap-16 rounded-band bg-accent-soft px-8 py-28 md:px-16 lg:grid-cols-[1fr_2fr]">
+      <div className="mx-auto grid max-w-[100rem] gap-10 rounded-band bg-accent-soft px-6 py-16 sm:px-8 md:px-16 lg:grid-cols-[1fr_2fr] lg:gap-16 lg:py-28">
         <Reveal className="flex flex-col">
           <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Stay up to date</h2>
           <p className="mt-6 max-w-md text-lg text-ink-secondary md:text-xl">
@@ -72,7 +72,7 @@ export default function BlogCarousel() {
             <Reveal
               key={post.title}
               delay={i === 1 ? 'delay-150' : i === 2 ? 'delay-300' : ''}
-              className="flex min-h-[480px] w-[420px] shrink-0 snap-start flex-col rounded-[2rem] bg-white p-10 md:w-[520px]"
+              className="flex min-h-[440px] w-[82vw] shrink-0 snap-start flex-col rounded-[2rem] bg-white p-8 sm:w-[420px] sm:p-10 md:w-[520px] lg:min-h-[480px]"
             >
               <img src={anaAvatar} alt="" className="h-10 w-10 rounded-full object-cover" />
               <h3 className="mt-8 text-2xl font-semibold leading-snug md:text-3xl">{post.title}</h3>

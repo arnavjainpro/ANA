@@ -22,7 +22,7 @@ export default function Hero() {
   return (
     <section id="download" className="pb-4 pt-2">
       <div className="mx-auto max-w-site px-6 md:px-10">
-        <div className="relative flex min-h-[85vh] items-center overflow-hidden rounded-hero bg-gradient-to-br from-blue-100 via-paper-tint to-blue-200 p-8 md:p-16 lg:p-20">
+        <div className="relative flex items-center overflow-hidden rounded-hero bg-gradient-to-br from-blue-100 via-paper-tint to-blue-200 p-6 sm:p-8 md:p-16 lg:min-h-[85vh] lg:p-20">
           <span className="absolute inset-0 flex items-center justify-center text-sm font-medium uppercase tracking-widest text-ink-tertiary/50">
             Hero photo placeholder
           </span>
@@ -35,7 +35,7 @@ export default function Hero() {
               <p className="mb-6 text-sm font-semibold uppercase tracking-wide text-accent">
                 Voice-first coding for everyone
               </p>
-              <h1 className="text-5xl font-bold tracking-tight md:text-6xl xl:text-7xl">
+              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl xl:text-7xl">
                 Build software by talking
               </h1>
               <p className="mt-8 max-w-lg text-lg text-ink-secondary md:text-xl">

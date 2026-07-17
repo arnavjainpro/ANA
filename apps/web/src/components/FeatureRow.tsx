@@ -41,7 +41,7 @@ export default function FeatureRow({
 }: FeatureRowProps) {
   return (
     <section id={id} className={dark ? 'bg-dark-base text-dark-text' : undefined}>
-      <div className="mx-auto grid min-h-[90vh] max-w-6xl items-center gap-12 px-6 py-24 md:px-10 lg:grid-cols-2">
+      <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-16 md:px-10 lg:min-h-[90vh] lg:grid-cols-2 lg:gap-12 lg:py-24">
         <Reveal className={`max-w-xl ${reverse ? 'lg:order-2 lg:justify-self-end' : ''}`}>
           <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-accent">{eyebrow}</p>
           <h2 className="text-4xl font-bold leading-[1.05] tracking-tight md:text-5xl">
