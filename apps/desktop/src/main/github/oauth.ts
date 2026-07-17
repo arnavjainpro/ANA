@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { shell } from 'electron';
-import { backendJson } from '../lib/backend.js';
+import { backendJson, setSessionJwt } from '../lib/backend.js';
 import { saveGitHubToken } from '../lib/tokenStore.js';
 
 // GitHub OAuth supports two callback strategies, chosen by the backend's
@@ -141,5 +141,6 @@ export async function connectGitHub(): Promise<{ login: string }> {
   );
 
   await saveGitHubToken(exchanged.githubToken, exchanged.login);
+  setSessionJwt(exchanged.jwt);
   return { login: exchanged.login };
 }

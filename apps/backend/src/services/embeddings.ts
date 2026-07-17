@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
+import { currentOwner } from '../lib/usageContext.js';
+import { recordUsage } from './usage.js';
 
 let openai: OpenAI | null = null;
 
@@ -9,7 +11,7 @@ function getClient(): OpenAI {
   if (!env.openai.apiKey) {
     throw new AppError(500, 'OPENAI_NOT_CONFIGURED', 'OPENAI_API_KEY is not set.');
   }
-  openai = new OpenAI({ apiKey: env.openai.apiKey });
+  openai = new OpenAI({ apiKey: env.openai.apiKey, timeout: 60_000, maxRetries: 2 });
   return openai;
 }
 
@@ -22,6 +24,10 @@ export async function embedBatch(inputs: string[]): Promise<number[][]> {
   const res = await getClient().embeddings.create({
     model: EMBEDDING_MODEL,
     input: inputs,
+  });
+  recordUsage(currentOwner(), 'embedding_tokens', res.usage?.total_tokens ?? 0, {
+    model: EMBEDDING_MODEL,
+    inputs: inputs.length,
   });
   return res.data.map((d) => d.embedding);
 }

@@ -15,6 +15,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
   // Generate a complete new-project scaffold from a spoken request.
   app.post<{ Body: { transcript: string; history?: ConversationTurn[] } }>(
     '/project/scaffold',
+    // The single most expensive Claude call in the app (16k max_tokens).
+    { config: { rateLimit: { max: 6, timeWindow: '1 hour' } } },
     async (req, reply) => {
       try {
         const { transcript, history } = req.body ?? {};

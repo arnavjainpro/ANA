@@ -1,9 +1,13 @@
 import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
-import { getActiveRepo } from './activeRepo.js';
+import { conversationsForOwner, getActiveRepo } from './activeRepo.js';
 import { SPEECH_SYSTEM_PROMPT } from './claude.js';
+import { recordUsage } from './usage.js';
 
 const TAVUS_API = 'https://tavusapi.com/v2';
+
+// A hung Tavus request must never hold a route open indefinitely.
+const TAVUS_TIMEOUT_MS = 15_000;
 
 // Spoken on join (Tavus `custom_greeting`), so Ana proactively says something
 // the moment the call connects instead of waiting for the user. Picked by repo
@@ -33,33 +37,25 @@ export interface TavusConversation {
 }
 
 /**
- * End every conversation on the account that isn't already ended. Ana is
- * single-user per Tavus account, so before starting a fresh session we reclaim
- * any that leaked (app crash, lost in-memory id, etc.) — otherwise low-tier
- * accounts immediately hit "maximum concurrent conversations". Best-effort:
- * never throws, so a cleanup hiccup can't block a legitimate start.
+ * End this owner's lingering conversations before starting a fresh one, so a
+ * leaked session (app crash, lost in-memory id) does not eat a concurrency
+ * slot. Scoped to conversations this process registered for THIS owner: ending
+ * everything on the account would kill other users' live calls. Best-effort:
+ * never throws, so a cleanup hiccup cannot block a legitimate start.
  */
-async function reclaimConcurrencySlots(): Promise<void> {
+async function reclaimConcurrencySlots(ownerId: string): Promise<void> {
   if (!env.tavus.apiKey) return;
   try {
-    const res = await fetch(`${TAVUS_API}/conversations?limit=100`, {
-      headers: { 'x-api-key': env.tavus.apiKey },
-    });
-    if (!res.ok) return;
-    const data = (await res.json()) as {
-      data?: { conversation_id: string; status: string }[];
-    };
-    const lingering = (data.data ?? []).filter((c) => c.status !== 'ended');
-    await Promise.all(lingering.map((c) => endConversation(c.conversation_id)));
+    await Promise.all(conversationsForOwner(ownerId).map((id) => endConversation(id)));
   } catch {
-    // Best-effort cleanup — proceed to create regardless.
+    // Best-effort cleanup, proceed to create regardless.
   }
 }
 
 /** A one-time briefing injected at call start so Tavus's native LLM has some
  *  repo awareness without us sitting in the per-turn speech path. */
-function repoContext(): string | undefined {
-  const repoFullName = getActiveRepo()?.repoFullName;
+function repoContext(ownerId: string): string | undefined {
+  const repoFullName = getActiveRepo(ownerId)?.repoFullName;
   if (!repoFullName) return undefined;
   return (
     `The user has connected the GitHub repository "${repoFullName}". ` +
@@ -75,7 +71,7 @@ function repoContext(): string | undefined {
  * one-time conversational_context briefing gives the native fallback some repo
  * awareness. Any leaked prior sessions are reclaimed first.
  */
-export async function createConversation(): Promise<TavusConversation> {
+export async function createConversation(ownerId: string): Promise<TavusConversation> {
   if (!env.tavus.apiKey || !env.tavus.personaId) {
     throw new AppError(
       500,
@@ -84,13 +80,14 @@ export async function createConversation(): Promise<TavusConversation> {
     );
   }
 
-  await reclaimConcurrencySlots();
+  await reclaimConcurrencySlots(ownerId);
 
-  const active = getActiveRepo();
-  const context = repoContext();
+  const active = getActiveRepo(ownerId);
+  const context = repoContext(ownerId);
 
   const res = await fetch(`${TAVUS_API}/conversations`, {
     method: 'POST',
+    signal: AbortSignal.timeout(TAVUS_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': env.tavus.apiKey,
@@ -114,6 +111,8 @@ export async function createConversation(): Promise<TavusConversation> {
     conversation_url: string;
     status: string;
   };
+
+  recordUsage(ownerId, 'tavus_conversation', 1, { conversationId: data.conversation_id });
 
   return {
     conversationId: data.conversation_id,
@@ -193,6 +192,7 @@ export async function ensurePersona(): Promise<void> {
   try {
     const res = await fetch(`${TAVUS_API}/personas/${env.tavus.personaId}`, {
       method: 'PATCH',
+      signal: AbortSignal.timeout(TAVUS_TIMEOUT_MS),
       headers: { 'Content-Type': 'application/json', 'x-api-key': env.tavus.apiKey },
       body: JSON.stringify(patch),
     });
@@ -216,6 +216,7 @@ export async function endConversation(conversationId: string): Promise<void> {
   if (!env.tavus.apiKey) return;
   await fetch(`${TAVUS_API}/conversations/${conversationId}/end`, {
     method: 'POST',
+    signal: AbortSignal.timeout(TAVUS_TIMEOUT_MS),
     headers: { 'x-api-key': env.tavus.apiKey },
   }).catch(() => undefined);
 }

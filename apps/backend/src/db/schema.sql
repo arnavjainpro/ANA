@@ -20,6 +20,26 @@ create table if not exists repos (
 -- Idempotent add for databases created before architecture_summary existed.
 alter table repos add column if not exists architecture_summary text;
 
+-- Tenancy: every repo row belongs to one Ana user (GitHub user id as text).
+-- Two customers indexing the same GitHub repo get separate rows, so their
+-- chunks, diagrams, and usage never mix.
+alter table repos add column if not exists owner_id text not null default '';
+alter table repos drop constraint if exists repos_github_id_key;
+create unique index if not exists repos_github_owner_key on repos (github_id, owner_id);
+create index if not exists repos_owner_idx on repos (owner_id);
+
+-- Metered usage for billing: one row per billable event.
+create table if not exists usage_events (
+  id         uuid primary key default gen_random_uuid(),
+  owner_id   text not null,
+  kind       text not null,     -- 'claude_tokens' | 'embedding_tokens' | 'tavus_conversation'
+  quantity   numeric not null,
+  meta       jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists usage_events_owner_idx on usage_events (owner_id, created_at);
+
 -- Structured whole-repo analysis (modules, import edges, entry points) built at
 -- index time and fed to canonical diagram generation.
 alter table repos add column if not exists module_map jsonb;

@@ -48,6 +48,7 @@ export async function indexRepo(
   token: string,
   fullName: string,
   onProgress: ProgressCallback,
+  ownerId = '',
 ): Promise<IndexResult> {
   const repo = await getRepo(token, fullName);
 
@@ -61,8 +62,8 @@ export async function indexRepo(
 
   const supabase = getSupabase();
 
-  // Upsert the repo row and get its id.
-  const { data: repoRow, error: repoErr } = await supabase
+  // Upsert the repo row (scoped per tenant) and get its id.
+  let { data: repoRow, error: repoErr } = await supabase
     .from('repos')
     .upsert(
       {
@@ -70,11 +71,30 @@ export async function indexRepo(
         full_name: repo.full_name,
         default_branch: repo.default_branch,
         size_kb: repo.size,
+        owner_id: ownerId,
       },
-      { onConflict: 'github_id' },
+      { onConflict: 'github_id,owner_id' },
     )
     .select('id')
     .single();
+
+  // Pre-migration database (001_tenancy.sql not applied yet): retry the legacy
+  // single-tenant upsert so indexing keeps working until the migration runs.
+  if (repoErr?.message.includes('owner_id')) {
+    ({ data: repoRow, error: repoErr } = await supabase
+      .from('repos')
+      .upsert(
+        {
+          github_id: repo.id,
+          full_name: repo.full_name,
+          default_branch: repo.default_branch,
+          size_kb: repo.size,
+        },
+        { onConflict: 'github_id' },
+      )
+      .select('id')
+      .single());
+  }
 
   if (repoErr || !repoRow) {
     throw new AppError(500, 'DB_UPSERT_FAILED', `Could not persist repo: ${repoErr?.message}`);

@@ -8,18 +8,30 @@ import {
   redoBuild,
   endBuildSession,
 } from '../services/turn.js';
-import { setActiveRepo, clearActiveRepo } from '../services/activeRepo.js';
+import {
+  setActiveRepo,
+  clearActiveRepo,
+  registerConversation,
+  unregisterConversation,
+} from '../services/activeRepo.js';
 import { subscribePanel } from '../services/panelBus.js';
+import { assertRepoOwner } from '../services/repoAccess.js';
 import { githubTokenFrom } from '../lib/auth.js';
 import { sendError } from '../lib/errors.js';
 import type { BuildTurnRequest, TurnRequest } from '../lib/types.js';
 
+// Claude-backed turns are the expensive path; keep a sane per-tenant ceiling.
+const TURN_RATE_LIMIT = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
+
 /** Tavus session start + per-turn Claude processing. */
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   // Create a Tavus CVI conversation; return the URL for the renderer to embed.
-  app.post('/conversation/start', async (_req, reply) => {
+  // The conversation is registered to the caller so voice turns arriving at
+  // /v1/chat/completions can be resolved back to this tenant.
+  app.post('/conversation/start', async (req, reply) => {
     try {
-      const conversation = await createConversation();
+      const conversation = await createConversation(req.ownerId);
+      registerConversation(conversation.conversationId, req.ownerId);
       return reply.send(conversation);
     } catch (err) {
       return sendError(reply, err);
@@ -30,7 +42,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { conversationId: string } }>('/conversation/end', async (req, reply) => {
     try {
       const { conversationId } = req.body ?? {};
-      if (conversationId) await endConversation(conversationId);
+      if (conversationId) {
+        unregisterConversation(conversationId);
+        await endConversation(conversationId);
+      }
       return reply.send({ ok: true });
     } catch (err) {
       return sendError(reply, err);
@@ -40,6 +55,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   // Process one conversation turn (the two-call Claude pattern).
   app.post<{ Body: TurnRequest & { repoFullName?: string } }>(
     '/conversation/turn',
+    TURN_RATE_LIMIT,
     async (req, reply) => {
       try {
         const body = req.body;
@@ -48,6 +64,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             .status(400)
             .send({ error: 'Missing repoId or utterance', code: 'MISSING_FIELDS' });
         }
+        await assertRepoOwner(body.repoId, req.ownerId);
         // GitHub token is optional here — only needed for on-demand file fetch.
         let githubToken: string | undefined;
         try {
@@ -83,7 +100,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   // Build mode: classify → reason → validate → return patches for the client to
   // apply atomically to disk. Pushes the operation onto the per-session undo stack.
-  app.post<{ Body: BuildTurnRequest }>('/conversation/build', async (req, reply) => {
+  app.post<{ Body: BuildTurnRequest }>('/conversation/build', TURN_RATE_LIMIT, async (req, reply) => {
     try {
       const body = req.body;
       if (!body?.sessionId || !body.transcript) {
@@ -133,14 +150,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   // Stream right-panel updates from voice turns to the desktop app as NDJSON.
   // The desktop main process holds this connection open for the app's lifetime
   // and forwards each event to the renderer.
-  app.get('/conversation/events', async (_req, reply) => {
+  app.get('/conversation/events', async (req, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, {
       'Content-Type': 'application/x-ndjson',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    const unsubscribe = subscribePanel((evt) => {
+    const unsubscribe = subscribePanel(req.ownerId, (evt) => {
       reply.raw.write(`${JSON.stringify(evt)}\n`);
     });
     // Newline keep-alive so idle proxies/tunnels don't drop the connection;
@@ -163,13 +180,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         if (!repoId) {
           return reply.status(400).send({ error: 'Missing repoId', code: 'MISSING_FIELDS' });
         }
+        await assertRepoOwner(repoId, req.ownerId);
         let githubToken: string | undefined;
         try {
           githubToken = githubTokenFrom(req);
         } catch {
           githubToken = undefined;
         }
-        setActiveRepo({ repoId, repoFullName, githubToken });
+        setActiveRepo(req.ownerId, { repoId, repoFullName, githubToken });
         return reply.send({ ok: true });
       } catch (err) {
         return sendError(reply, err);
@@ -179,9 +197,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   // Forget the active repo so Ana starts a session with no stale context
   // (called on app launch and when switching repos before re-indexing).
-  app.post('/conversation/reset-context', async (_req, reply) => {
+  app.post('/conversation/reset-context', async (req, reply) => {
     try {
-      clearActiveRepo();
+      clearActiveRepo(req.ownerId);
       return reply.send({ ok: true });
     } catch (err) {
       return sendError(reply, err);

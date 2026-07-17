@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../lib/env.js';
 import { AppError } from '../lib/errors.js';
+import { currentOwner } from '../lib/usageContext.js';
+import { recordUsage } from './usage.js';
 import type {
   AnaResponse,
   BuildEditResponse,
@@ -30,8 +32,26 @@ function getClient(): Anthropic {
   if (!env.anthropic.apiKey) {
     throw new AppError(500, 'ANTHROPIC_NOT_CONFIGURED', 'ANTHROPIC_API_KEY is not set.');
   }
-  anthropic = new Anthropic({ apiKey: env.anthropic.apiKey });
+  anthropic = new Anthropic({
+    apiKey: env.anthropic.apiKey,
+    // A hung request must not hold a voice turn open forever; the SDK retries
+    // transient 429/5xx itself.
+    timeout: 60_000,
+    maxRetries: 2,
+  });
   return anthropic;
+}
+
+/** Meter one Claude response against the current tenant (billing foundation). */
+function recordClaudeUsage(message: Anthropic.Message): void {
+  const usage = message.usage;
+  if (!usage) return;
+  recordUsage(currentOwner(), 'claude_tokens', usage.input_tokens + usage.output_tokens, {
+    model: message.model,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+  });
 }
 
 // --- Static system prompts (the cached block for every Call 2 request). ---
@@ -304,6 +324,7 @@ function parseJsonObject<T>(raw: string): T {
 }
 
 function blockText(message: Anthropic.Message): string {
+  recordClaudeUsage(message);
   return message.content
     .map((b) => (b.type === 'text' ? b.text : ''))
     .join('')
@@ -430,6 +451,8 @@ export async function* streamSpokenReply(params: {
       yield event.delta.text;
     }
   }
+  // The stream has fully resolved here, so this is immediate.
+  recordClaudeUsage(await stream.finalMessage());
 }
 
 // Static system prompt for the one-time architecture summary (cached).
@@ -846,6 +869,7 @@ export async function generateBuildResponse(params: {
     messages: [{ role: 'user', content: contextParts.join('\n\n') }],
   });
 
+  recordClaudeUsage(message);
   const toolUse = message.content.find((b) => b.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') {
     throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return any edits.');
@@ -926,6 +950,7 @@ export async function generateScaffold(params: {
     ],
   });
 
+  recordClaudeUsage(message);
   const toolUse = message.content.find((b) => b.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') {
     throw new AppError(502, 'CLAUDE_BAD_JSON', 'Claude did not return a scaffold.');

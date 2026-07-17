@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow } from 'electron';
-import { backendJson, backendUrl } from '../lib/backend.js';
+import { backendJson, backendUrl, sessionHeaders } from '../lib/backend.js';
 import { loadGitHubToken } from '../lib/tokenStore.js';
 import type { BusEvent, IpcResult, TurnRequest, TurnResult } from '../../types.js';
 
@@ -18,7 +18,9 @@ export function startPanelStream(window: BrowserWindow): void {
   const run = async (): Promise<void> => {
     while (!stopped) {
       try {
-        const res = await fetch(backendUrl('/conversation/events'));
+        const res = await fetch(backendUrl('/conversation/events'), {
+          headers: await sessionHeaders(),
+        });
         if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();

@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { backendJson, backendUrl } from '../lib/backend.js';
+import { backendJson, backendUrl, sessionHeaders } from '../lib/backend.js';
 import { loadGitHubToken } from '../lib/tokenStore.js';
 import type {
   IpcResult,
@@ -69,7 +69,11 @@ export function registerRepoIpc(): void {
         const token = await requireToken();
         const res = await fetch(backendUrl('/repo/index'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-github-token': token },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-github-token': token,
+            ...(await sessionHeaders()),
+          },
           body: JSON.stringify({ fullName }),
         });
         if (!res.ok || !res.body) {

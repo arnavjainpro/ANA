@@ -1,3 +1,4 @@
+import { timingSafeEqual, createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import {
   classifyIntent,
@@ -10,7 +11,7 @@ import { resolveDiagramView } from '../services/diagramView.js';
 import { retrieveChunks } from '../services/retrieval.js';
 import { getProjectMap } from '../services/projectMap.js';
 import { getArchitectureSummary } from '../services/architectureSummary.js';
-import { getActiveRepo } from '../services/activeRepo.js';
+import { getActiveRepo, ownerForConversation, soleLiveOwner } from '../services/activeRepo.js';
 import {
   publishPanel,
   publishBuildRequest,
@@ -21,6 +22,7 @@ import {
   publishTerminalRequest,
 } from '../services/panelBus.js';
 import { env } from '../lib/env.js';
+import { setContextOwner } from '../lib/usageContext.js';
 import type { ConversationTurn, IntentClassification } from '../lib/types.js';
 
 // Short, non-committal acks spoken while the desktop applies a voice change;
@@ -86,6 +88,15 @@ interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
   stream: boolean;
+  /** Tavus includes the conversation id on custom-LLM calls when available. */
+  conversation_id?: string;
+}
+
+/** Constant-time comparison over hashes so length differences leak nothing. */
+function secretMatches(presented: string, expected: string): boolean {
+  const a = createHash('sha256').update(presented).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
 }
 
 type Delta = { role?: 'assistant'; content?: string };
@@ -113,6 +124,7 @@ function chunkLine(
 // through the diagram cache, which gates redraws (follow-ups hold the current
 // view) and serves frozen overview/focus/detail maps so the picture stays stable.
 function publishPanelInBackground(
+  ownerId: string,
   repoId: string,
   transcript: string,
   history: ConversationTurn[],
@@ -130,7 +142,7 @@ function publishPanelInBackground(
       .then((view) => {
         // null => no diagram change this turn; leave the current view on screen.
         if (!view) return;
-        publishPanel({
+        publishPanel(ownerId, {
           mode: 'Understand',
           // Highlighting tracks Ana's live speech (and the payload's
           // highlightedNodes); the panel itself carries no separate narration.
@@ -149,7 +161,7 @@ function publishPanelInBackground(
 
   void processTurn({ repoId, utterance: transcript, history }, options)
     .then((result) => {
-      publishPanel({
+      publishPanel(ownerId, {
         mode: result.mode,
         spoken: result.spoken,
         panel: result.panel,
@@ -165,13 +177,26 @@ function publishPanelInBackground(
 // RAG-grounded spoken reply, with the panel/Build work handled out-of-band.
 export async function completionsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: ChatCompletionRequest }>('/v1/chat/completions', async (req, reply) => {
-    // Publicly reachable, so require the shared secret (Bearer) when configured.
+    // Publicly reachable, so require the shared secret (Bearer) whenever one is
+    // configured. Production refuses to boot without it (see index.ts), so the
+    // only unauthenticated mode is an explicit local dev setup.
     if (env.ana.llmSecret) {
       const auth = req.headers.authorization ?? '';
-      if (auth !== `Bearer ${env.ana.llmSecret}`) {
+      const presented = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
+      if (!presented || !secretMatches(presented, env.ana.llmSecret)) {
         return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       }
     }
+
+    // Resolve which tenant this voice turn belongs to: the conversation id when
+    // Tavus sends one, else the only owner with a live conversation. With two or
+    // more live owners and no id this stays null and the turn runs without repo
+    // context, never against another tenant's code.
+    const conversationId = req.body?.conversation_id;
+    const ownerId =
+      (conversationId ? ownerForConversation(conversationId) : null) ?? soleLiveOwner();
+    // Attribute this voice turn's Claude/embedding usage to the resolved tenant.
+    if (ownerId) setContextOwner(ownerId);
 
     const messages = req.body?.messages ?? [];
 
@@ -215,8 +240,8 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
     const keepAlive = setInterval(() => reply.raw.write(': ping\n\n'), 15_000);
 
     try {
-      const active = getActiveRepo();
-      if (active?.repoId) {
+      const active = ownerId ? getActiveRepo(ownerId) : null;
+      if (ownerId && active?.repoId) {
         // Classify in parallel with retrieval (no added latency), then branch:
         // Build goes to the desktop to apply on disk; else answer by voice.
         const [intent, chunks, projectMap, architectureSummary] = await Promise.all([
@@ -229,18 +254,18 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
         ]);
 
         if (intent.undo) {
-          publishUndoRequest();
+          publishUndoRequest(ownerId);
           reply.raw.write(chunkLine(base, { content: pickUndoAck() }, null));
         } else if (intent.redo) {
-          publishRedoRequest();
+          publishRedoRequest(ownerId);
           reply.raw.write(chunkLine(base, { content: pickRedoAck() }, null));
         } else if (intent.createProject) {
           // An explicit "start a new project" always creates a fresh one, even
           // with a repo already connected.
-          publishCreateProjectRequest(transcript, history);
+          publishCreateProjectRequest(ownerId, transcript, history);
           reply.raw.write(chunkLine(base, { content: pickCreateAck() }, null));
         } else if (intent.runAction) {
-          publishRunRequest(intent.runAction);
+          publishRunRequest(ownerId, intent.runAction);
           reply.raw.write(
             chunkLine(
               base,
@@ -254,13 +279,13 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
             ),
           );
         } else if (intent.terminalCommand) {
-          publishTerminalRequest(intent.terminalCommand);
+          publishTerminalRequest(ownerId, intent.terminalCommand);
           reply.raw.write(chunkLine(base, { content: pickTerminalAck() }, null));
         } else if (intent.mode === 'Build') {
-          publishBuildRequest(transcript, history);
+          publishBuildRequest(ownerId, transcript, history);
           reply.raw.write(chunkLine(base, { content: pickBuildAck() }, null));
         } else {
-          publishPanelInBackground(active.repoId, transcript, history, {
+          publishPanelInBackground(ownerId, active.repoId, transcript, history, {
             githubToken: active.githubToken,
             repoFullName: active.repoFullName,
             precomputedIntent: intent,
@@ -284,8 +309,8 @@ export async function completionsRoutes(app: FastifyInstance): Promise<void> {
           classifyIntent(transcript, history).catch(() => null),
           generateNoRepoReply({ utterance: transcript, history }),
         ]);
-        if (intent && (intent.createProject || intent.mode === 'Build')) {
-          publishCreateProjectRequest(transcript, history);
+        if (ownerId && intent && (intent.createProject || intent.mode === 'Build')) {
+          publishCreateProjectRequest(ownerId, transcript, history);
           reply.raw.write(chunkLine(base, { content: pickCreateAck() }, null));
         } else {
           reply.raw.write(chunkLine(base, { content: noRepo.spoken }, null));

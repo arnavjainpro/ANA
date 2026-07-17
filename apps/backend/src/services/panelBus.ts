@@ -65,51 +65,68 @@ export type BusEvent =
 
 type Listener = (event: BusEvent) => void;
 
-const listeners = new Set<Listener>();
+// Listeners are keyed by tenant so one user's desktop never receives another
+// user's panel or build events.
+const listenersByOwner = new Map<string, Set<Listener>>();
 
-function emit(event: BusEvent): void {
-  for (const listener of listeners) listener(event);
+function emit(ownerId: string, event: BusEvent): void {
+  const set = listenersByOwner.get(ownerId);
+  if (!set) return;
+  for (const listener of set) listener(event);
 }
 
-export function publishPanel(event: Omit<PanelEvent, 'type'>): void {
-  emit({ type: 'panel', ...event });
+export function publishPanel(ownerId: string, event: Omit<PanelEvent, 'type'>): void {
+  emit(ownerId, { type: 'panel', ...event });
 }
 
 /** Hand a voice change request to the desktop to apply on the local working copy. */
-export function publishBuildRequest(transcript: string, history: ConversationTurn[]): void {
-  emit({ type: 'build-request', transcript, history });
+export function publishBuildRequest(
+  ownerId: string,
+  transcript: string,
+  history: ConversationTurn[],
+): void {
+  emit(ownerId, { type: 'build-request', transcript, history });
 }
 
 /** Ask the desktop to undo the last change applied this session. */
-export function publishUndoRequest(): void {
-  emit({ type: 'undo-request' });
+export function publishUndoRequest(ownerId: string): void {
+  emit(ownerId, { type: 'undo-request' });
 }
 
 /** Ask the desktop to redo the most recently undone change. */
-export function publishRedoRequest(): void {
-  emit({ type: 'redo-request' });
+export function publishRedoRequest(ownerId: string): void {
+  emit(ownerId, { type: 'redo-request' });
 }
 
 /** Hand a new-project request to the desktop (scaffold → folder → repo → push). */
 export function publishCreateProjectRequest(
+  ownerId: string,
   transcript: string,
   history: ConversationTurn[],
 ): void {
-  emit({ type: 'create-project-request', transcript, history });
+  emit(ownerId, { type: 'create-project-request', transcript, history });
 }
 
 /** Ask the desktop to launch or stop the currently connected project. */
-export function publishRunRequest(action: 'launch' | 'stop'): void {
-  emit({ type: 'run-request', action });
+export function publishRunRequest(ownerId: string, action: 'launch' | 'stop'): void {
+  emit(ownerId, { type: 'run-request', action });
 }
 
 /** Ask the desktop to run a shell command in the integrated terminal. */
-export function publishTerminalRequest(command: string): void {
-  emit({ type: 'terminal-request', command });
+export function publishTerminalRequest(ownerId: string, command: string): void {
+  emit(ownerId, { type: 'terminal-request', command });
 }
 
-/** Subscribe to bus events; returns an unsubscribe function. */
-export function subscribePanel(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+/** Subscribe to one tenant's bus events; returns an unsubscribe function. */
+export function subscribePanel(ownerId: string, listener: Listener): () => void {
+  let set = listenersByOwner.get(ownerId);
+  if (!set) {
+    set = new Set();
+    listenersByOwner.set(ownerId, set);
+  }
+  set.add(listener);
+  return () => {
+    set.delete(listener);
+    if (set.size === 0) listenersByOwner.delete(ownerId);
+  };
 }

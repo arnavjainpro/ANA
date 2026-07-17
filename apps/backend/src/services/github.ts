@@ -18,16 +18,33 @@ interface GitHubTreeEntry {
   size?: number;
 }
 
+// File downloads can be slow on large blobs; everything else should be quick.
+const GITHUB_TIMEOUT_MS = 30_000;
+
 async function gh<T>(path: string, token: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${GITHUB_API}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-  });
+  // GETs are safe to retry once on transient upstream trouble (429/5xx).
+  const retriable = !init?.method || init.method === 'GET';
+  const attempts = retriable ? 2 : 1;
+
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    res = await fetch(`${GITHUB_API}${path}`, {
+      ...init,
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+    });
+    if (res.ok || attempt === attempts - 1) break;
+    if (res.status !== 429 && res.status < 500) break;
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  if (!res) {
+    throw new AppError(502, 'GITHUB_API_ERROR', `GitHub API ${path} failed: no response.`);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new AppError(
@@ -46,6 +63,7 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
   }
   const res = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
+    signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_id: env.github.clientId,
@@ -84,10 +102,12 @@ export async function getRepo(token: string, fullName: string): Promise<GitHubRe
   return gh<GitHubRepoSummary>(`/repos/${fullName}`, token);
 }
 
-/** The authenticated user's login (for git identity + repo ownership). */
-export async function getAuthenticatedUser(token: string): Promise<{ login: string }> {
-  const user = await gh<{ login: string }>('/user', token);
-  return { login: user.login };
+/** The authenticated user's stable id + login (session identity, git identity). */
+export async function getAuthenticatedUser(
+  token: string,
+): Promise<{ id: number; login: string }> {
+  const user = await gh<{ id: number; login: string }>('/user', token);
+  return { id: user.id, login: user.login };
 }
 
 interface GitHubCreatedRepo extends GitHubRepoSummary {
