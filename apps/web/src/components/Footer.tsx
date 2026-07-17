@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import anaAvatar from '../assets/ana-avatar.png';
 import { GithubIcon, XIcon, YoutubeIcon } from './icons';
 import Reveal from './Reveal';
@@ -10,7 +11,7 @@ interface LinkColumn {
 
 const columns: LinkColumn[] = [
   { heading: 'What we do', links: ['Features', 'Understand', 'Plan', 'Build'] },
-  { heading: 'Who we are', links: ['About', 'Careers', 'Brand', 'Contact'] },
+  { heading: 'Who we are', links: ['About', 'Careers', 'Team', 'Contact'] },
   { heading: 'Use Ana', links: ['macOS', 'Windows', 'Pricing', 'Changelog'] },
   { heading: 'Need help?', links: ['Docs', 'Contact support', 'Security', 'Status'] },
 ];
@@ -27,12 +28,12 @@ export default function Footer() {
       <div className="mx-auto max-w-site px-6 md:px-10">
         <Reveal className="grid gap-10 py-16 lg:grid-cols-[1.2fr_repeat(4,1fr)]">
           <div>
-            <a href="#" className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3">
               <img src={anaAvatar} alt="Ana logo" className="h-9 w-9 rounded-full object-cover" />
               <span className="text-xl font-bold tracking-tight text-dark-text">Ana</span>
-            </a>
+            </Link>
             <a
-              href="#download"
+              href="/#download"
               className="mt-7 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
             >
               Download
@@ -46,12 +47,21 @@ export default function Footer() {
               <ul className="flex flex-col gap-3">
                 {column.links.map((link) => (
                   <li key={link}>
-                    <a
-                      href="#"
-                      className="text-base font-medium text-dark-text transition-colors hover:text-white"
-                    >
-                      {link}
-                    </a>
+                    {link === 'Team' ? (
+                      <Link
+                        to="/team"
+                        className="text-base font-medium text-dark-text transition-colors hover:text-white"
+                      >
+                        {link}
+                      </Link>
+                    ) : (
+                      <a
+                        href="#"
+                        className="text-base font-medium text-dark-text transition-colors hover:text-white"
+                      >
+                        {link}
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
