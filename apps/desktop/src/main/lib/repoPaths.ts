@@ -47,6 +47,19 @@ export async function setStoredRepoPath(fullName: string, path: string): Promise
   currentRepoRoot = path;
 }
 
+/** All repo → local path mappings persisted so far (Settings → Repos). */
+export async function listStoredRepoPaths(): Promise<Record<string, string>> {
+  return readStore();
+}
+
+/** Forget a repo's stored local path (Settings → Repos → Forget). */
+export async function clearStoredRepoPath(fullName: string): Promise<void> {
+  const map = await readStore();
+  if (map[fullName] === currentRepoRoot) currentRepoRoot = null;
+  delete map[fullName];
+  await writeStore(map);
+}
+
 export function getCurrentRepoRoot(): string | null {
   return currentRepoRoot;
 }

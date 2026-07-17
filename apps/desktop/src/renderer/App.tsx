@@ -12,6 +12,8 @@ import { TopBar } from './components/TopBar';
 import { PopupHeader } from './components/PopupHeader';
 import { ConnectPanel } from './components/ConnectPanel';
 import { FileTreeSection } from './components/FileTreeSection';
+import { AccountFooter } from './components/AccountFooter';
+import { SettingsView } from './panels/settings/SettingsView';
 import { AnaConversation } from './components/AnaConversation';
 import { Composer } from './components/Composer';
 import { CommandPalette } from './components/CommandPalette';
@@ -243,6 +245,7 @@ export default function App(): JSX.Element {
   const composerOpen = useUiStore((s) => s.composerOpen);
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
   const toggleTerminal = useUiStore((s) => s.toggleTerminal);
+  const settingsOpen = useUiStore((s) => s.settingsOpen);
   const applyPanel = useConversationStore((s) => s.applyPanel);
   const { setConnected, setRepos } = useRepoStore();
   const error = useConversationStore((s) => s.error);
@@ -399,7 +402,7 @@ export default function App(): JSX.Element {
   }, [toggleTerminal]);
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-surface-base text-text-primary">
+    <div className="relative flex h-screen w-screen flex-col bg-surface-base text-text-primary">
       {isPopup ? <PopupHeader /> : <TopBar />}
 
       {/* Both PanelGroups render unconditionally in full AND popup modes — the
@@ -452,6 +455,7 @@ export default function App(): JSX.Element {
               >
                 <ConnectPanel />
                 <FileTreeSection />
+                <AccountFooter />
               </aside>
             </Panel>
             <Separator className={`${SEPARATOR_CLASSES} ${isPopup || !sidebarOpen ? 'hidden' : 'w-px'}`} />
@@ -519,6 +523,7 @@ export default function App(): JSX.Element {
       )}
 
       <CommandPalette />
+      {settingsOpen && <SettingsView />}
     </div>
   );
 }

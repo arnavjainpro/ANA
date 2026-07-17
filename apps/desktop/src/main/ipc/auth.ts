@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { connectGitHub } from '../github/oauth.js';
-import { loadGitHubToken, getCachedLogin } from '../lib/tokenStore.js';
+import { loadGitHubToken, getCachedLogin, clearGitHubToken } from '../lib/tokenStore.js';
 import type { IpcResult } from '../../types.js';
 
 export function registerAuthIpc(): void {
@@ -19,5 +19,10 @@ export function registerAuthIpc(): void {
     } catch {
       return { connected: false, login: null };
     }
+  });
+
+  ipcMain.handle('auth:disconnectGitHub', async (): Promise<{ ok: true }> => {
+    await clearGitHubToken();
+    return { ok: true };
   });
 }

@@ -1,4 +1,12 @@
-const t = require('./src/renderer/theme/tokens.json');
+// Colors below resolve to CSS custom properties (defined per-theme in
+// index.css, switched at runtime via [data-theme] on <html>) rather than
+// literal hex, so the whole app can flip dark/light without a rebuild.
+// `withOpacity` keeps Tailwind's color-opacity modifiers (e.g. bg-x/50)
+// working — the CSS var must hold "R G B" triplets, not a hex string.
+function withOpacity(varName) {
+  return ({ opacityValue }) =>
+    opacityValue === undefined ? `rgb(var(${varName}))` : `rgb(var(${varName}) / ${opacityValue})`;
+}
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -6,43 +14,45 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Semantic design tokens — single source of truth in theme/tokens.json.
+        // Semantic design tokens — CSS vars are the single source of truth,
+        // defined per-theme in index.css from theme/tokens.json's values.
         // Four elevation levels: base (workspace/editor/diagram/terminal),
         // raised (chrome: sidebar, top bar, panel headers), overlay (nested
         // cards/rows/inputs), modal (command palette, popovers).
         surface: {
-          base: t.surface.base,
-          raised: t.surface.raised,
-          overlay: t.surface.overlay,
-          modal: t.surface.modal,
-          border: t.surface.border,
-          'border-strong': t.surface.borderStrong,
-          hover: t.surface.hover,
-          active: t.surface.active,
+          base: withOpacity('--color-surface-base'),
+          raised: withOpacity('--color-surface-raised'),
+          overlay: withOpacity('--color-surface-overlay'),
+          modal: withOpacity('--color-surface-modal'),
+          border: withOpacity('--color-surface-border'),
+          'border-strong': withOpacity('--color-surface-border-strong'),
+          hover: withOpacity('--color-surface-hover'),
+          active: withOpacity('--color-surface-active'),
         },
         text: {
-          primary: t.text.primary,
-          secondary: t.text.secondary,
-          tertiary: t.text.tertiary,
-          disabled: t.text.disabled,
+          primary: withOpacity('--color-text-primary'),
+          secondary: withOpacity('--color-text-secondary'),
+          tertiary: withOpacity('--color-text-tertiary'),
+          disabled: withOpacity('--color-text-disabled'),
         },
         accent: {
-          primary: t.accent.primary,
-          hover: t.accent.hover,
-          muted: t.accent.muted,
-          border: t.accent.border,
-          glow: t.accent.glow,
+          primary: withOpacity('--color-accent-primary'),
+          hover: withOpacity('--color-accent-hover'),
+          muted: 'var(--color-accent-muted)',
+          border: 'var(--color-accent-border)',
+          glow: 'var(--color-accent-glow)',
         },
         status: {
-          success: t.status.success,
-          'success-muted': t.status.successMuted,
-          warning: t.status.warning,
-          'warning-muted': t.status.warningMuted,
-          danger: t.status.danger,
-          'danger-muted': t.status.dangerMuted,
+          success: withOpacity('--color-status-success'),
+          'success-muted': 'var(--color-status-success-muted)',
+          warning: withOpacity('--color-status-warning'),
+          'warning-muted': 'var(--color-status-warning-muted)',
+          danger: withOpacity('--color-status-danger'),
+          'danger-muted': 'var(--color-status-danger-muted)',
         },
         // Diagram domain colors (Understand panel node/edge typing) — not part
-        // of the elevation system, intentionally kept separate.
+        // of the elevation system, intentionally kept separate and dark-only
+        // (the diagram canvas itself is a fixed dark surface either theme).
         node: {
           file: { bg: '#1E2A3A', border: '#3B6FCC', text: '#93C5FD' },
           service: { bg: '#1E2D27', border: '#2D8B5A', text: '#6EE7B7' },
@@ -61,7 +71,7 @@ module.exports = {
         // Elevation ramp: quiet drop shadows, no coloured halos.
         raised: '0 1px 2px rgba(0,0,0,0.4)',
         overlay: '0 4px 16px -4px rgba(0,0,0,0.5)',
-        modal: `0 0 0 1px ${t.surface.border}, 0 16px 48px -12px rgba(0,0,0,0.7)`,
+        modal: '0 0 0 1px rgb(var(--color-surface-border)), 0 16px 48px -12px rgba(0,0,0,0.7)',
         'focus-brand': '0 0 0 1px rgba(59,130,246,0.55)',
       },
       keyframes: {

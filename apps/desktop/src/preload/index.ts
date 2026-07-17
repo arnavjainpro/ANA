@@ -20,6 +20,7 @@ const api: AnaApi = {
   auth: {
     connectGitHub: () => ipcRenderer.invoke('auth:connectGitHub'),
     status: () => ipcRenderer.invoke('auth:status'),
+    disconnectGitHub: () => ipcRenderer.invoke('auth:disconnectGitHub'),
   },
   repo: {
     list: () => ipcRenderer.invoke('repo:list'),
@@ -57,6 +58,8 @@ const api: AnaApi = {
     redo: (sessionId: string, repoPath: string) =>
       ipcRenderer.invoke('build:redo', sessionId, repoPath),
     endSession: (sessionId: string) => ipcRenderer.invoke('build:endSession', sessionId),
+    listRepoPaths: () => ipcRenderer.invoke('build:listRepoPaths'),
+    clearRepoPath: (repoFullName: string) => ipcRenderer.invoke('build:clearRepoPath', repoFullName),
   },
   fs: {
     readFile: (repoPath: string, relPath: string) =>

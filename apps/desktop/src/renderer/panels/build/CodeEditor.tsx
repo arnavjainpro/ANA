@@ -3,6 +3,7 @@ import Editor, { DiffEditor, type Monaco } from '@monaco-editor/react';
 import { defineAnaMonacoTheme } from '../../theme/tokens';
 import { languageForPath } from '../../lib/monaco';
 import { useBuildStore } from '../../store/buildStore';
+import { useUiStore } from '../../store/uiStore';
 
 const SHARED_OPTIONS = {
   minimap: { enabled: false },
@@ -24,6 +25,7 @@ export function CodeEditor(): JSX.Element {
   const lastPatches = useBuildStore((s) => s.lastPatches);
   const setOpenContents = useBuildStore((s) => s.setOpenContents);
   const saveFile = useBuildStore((s) => s.saveFile);
+  const monacoTheme = useUiStore((s) => s.theme) === 'light' ? 'ana-light' : 'ana-dark';
 
   const saveRef = useRef(saveFile);
   saveRef.current = saveFile;
@@ -70,7 +72,7 @@ export function CodeEditor(): JSX.Element {
         <div className="min-h-0 flex-1">
           <DiffEditor
             height="100%"
-            theme="ana-dark"
+            theme={monacoTheme}
             beforeMount={defineAnaMonacoTheme}
             language={languageForPath(openPath)}
             original={patch.original}
@@ -88,7 +90,7 @@ export function CodeEditor(): JSX.Element {
       <div className="min-h-0 flex-1">
         <Editor
           height="100%"
-          theme="ana-dark"
+          theme={monacoTheme}
           beforeMount={defineAnaMonacoTheme}
           path={openPath}
           language={languageForPath(openPath)}

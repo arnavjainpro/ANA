@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 import type { Mode, WindowMode, WindowModeState } from '../../types';
+import type { ThemeName } from '../theme/tokens';
+
+const THEME_STORAGE_KEY = 'ana-theme';
+
+function loadStoredTheme(): ThemeName {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  return stored === 'light' ? 'light' : 'dark';
+}
+
+function applyTheme(theme: ThemeName): void {
+  document.documentElement.dataset.theme = theme;
+}
 
 interface UiState {
   activeMode: Mode;
@@ -42,6 +54,14 @@ interface UiState {
   terminalOpen: boolean;
   setTerminalOpen: (open: boolean) => void;
   toggleTerminal: () => void;
+
+  /** Full-page settings view (opened from the sidebar account footer's gear icon). */
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+
+  /** App-wide dark/light theme, persisted to localStorage. */
+  theme: ThemeName;
+  setTheme: (theme: ThemeName) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -70,4 +90,18 @@ export const useUiStore = create<UiState>((set) => ({
   terminalOpen: false,
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+
+  settingsOpen: false,
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  theme: loadStoredTheme(),
+  setTheme: (theme) => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    applyTheme(theme);
+    set({ theme });
+  },
 }));
+
+// Apply the persisted (or default) theme immediately, before the first paint
+// of any themed component.
+applyTheme(useUiStore.getState().theme);

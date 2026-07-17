@@ -13,3 +13,4 @@ export { ErrorBanner } from './ErrorBanner';
 export { Kbd } from './Kbd';
 export { Spinner } from './Spinner';
 export { GithubIcon } from './GithubIcon';
+export { Switch } from './Switch';

@@ -281,6 +281,8 @@ export interface AnaApi {
   auth: {
     connectGitHub: () => Promise<IpcResult<{ login: string }>>;
     status: () => Promise<{ connected: boolean; login: string | null }>;
+    /** Forget the stored GitHub token (Settings → General → Disconnect). */
+    disconnectGitHub: () => Promise<{ ok: true }>;
   };
   repo: {
     list: () => Promise<IpcResult<{ repos: RepoSummary[] }>>;
@@ -320,6 +322,10 @@ export interface AnaApi {
     redo: (sessionId: string, repoPath: string) => Promise<IpcResult<UndoResult>>;
     /** Clear the session's undo history. */
     endSession: (sessionId: string) => Promise<{ ok: true }>;
+    /** All repo full_name → local path mappings persisted so far. */
+    listRepoPaths: () => Promise<{ paths: Record<string, string> }>;
+    /** Forget a repo's stored local path. */
+    clearRepoPath: (repoFullName: string) => Promise<{ ok: true }>;
   };
   fs: {
     readFile: (repoPath: string, relPath: string) => Promise<IpcResult<{ contents: string }>>;

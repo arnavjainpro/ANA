@@ -5,6 +5,8 @@ import {
   getStoredRepoPath,
   setStoredRepoPath,
   validateRepoFolder,
+  listStoredRepoPaths,
+  clearStoredRepoPath,
 } from '../lib/repoPaths.js';
 import { applyPatchesToDisk, readLocalFiles } from './filesystem.js';
 import { stagePaths } from './git.js';
@@ -147,6 +149,20 @@ export function registerBuildIpc(): void {
       }
     },
   );
+
+  // All repo → local path mappings persisted so far (Settings → Repos).
+  ipcMain.handle(
+    'build:listRepoPaths',
+    async (): Promise<{ paths: Record<string, string> }> => {
+      return { paths: await listStoredRepoPaths() };
+    },
+  );
+
+  // Forget a repo's stored local path (Settings → Repos → Forget).
+  ipcMain.handle('build:clearRepoPath', async (_e, fullName: string): Promise<{ ok: true }> => {
+    await clearStoredRepoPath(fullName);
+    return { ok: true };
+  });
 
   // Clear the session's undo history (GitHub disconnect / app close).
   ipcMain.handle('build:endSession', async (_e, sessionId: string): Promise<{ ok: true }> => {

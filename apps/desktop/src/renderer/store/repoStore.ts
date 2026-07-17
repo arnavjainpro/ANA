@@ -20,6 +20,8 @@ interface RepoState {
   setConnected: (connected: boolean, login: string | null) => void;
   setRepos: (repos: RepoSummary[]) => void;
   selectRepo: (repo: RepoSummary) => void;
+  /** Reset to signed-out state (Settings → General → Disconnect). */
+  disconnect: () => void;
   setTree: (tree: RepoTreeNode[]) => void;
   setIndexStatus: (status: IndexStatus, message?: string) => void;
   setIndexProgress: (processed: number, total: number) => void;
@@ -51,6 +53,20 @@ export const useRepoStore = create<RepoState>((set) => ({
       indexMessage: '',
       indexProcessed: 0,
       indexTotal: 0,
+    }),
+  disconnect: () =>
+    set({
+      connected: false,
+      login: null,
+      repos: [],
+      selectedRepo: null,
+      tree: [],
+      repoId: null,
+      indexStatus: 'idle',
+      indexMessage: '',
+      indexProcessed: 0,
+      indexTotal: 0,
+      error: null,
     }),
   setTree: (tree) => set({ tree }),
   setIndexStatus: (indexStatus, indexMessage = '') => set({ indexStatus, indexMessage }),

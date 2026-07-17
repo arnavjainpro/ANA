@@ -43,6 +43,14 @@ export function getCachedLogin(): string | null {
   return cachedLogin;
 }
 
+/** Forget the stored GitHub token + login (Settings → disconnect). */
+export async function clearGitHubToken(): Promise<void> {
+  cachedToken = null;
+  cachedLogin = null;
+  await fs.rm(tokenFilePath(), { force: true });
+  await fs.rm(join(app.getPath('userData'), 'github.login'), { force: true });
+}
+
 export function requireGitHubTokenSync(): string {
   if (!cachedToken) {
     throw new Error('Not connected to GitHub.');

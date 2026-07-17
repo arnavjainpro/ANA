@@ -2,6 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens as CSS custom properties, switched at runtime via
+   document.documentElement.dataset.theme (see store/uiStore.ts). Values here
+   are hand-kept in sync with theme/tokens.json — see the note in tokens.ts.
+   Triplets ("R G B") power Tailwind's color-opacity modifiers (bg-x/50);
+   the muted/border/glow/status-muted entries are already full color functions
+   since nothing applies an opacity modifier to them. Dark is the default so
+   the app looks unchanged before React sets the attribute. */
+:root {
+  --color-surface-base: 13 13 15;
+  --color-surface-raised: 19 19 22;
+  --color-surface-overlay: 26 26 31;
+  --color-surface-modal: 32 32 39;
+  --color-surface-border: 42 42 50;
+  --color-surface-border-strong: 58 58 69;
+  --color-surface-hover: 30 30 36;
+  --color-surface-active: 38 38 46;
+
+  --color-text-primary: 237 237 240;
+  --color-text-secondary: 162 162 172;
+  --color-text-tertiary: 110 110 120;
+  --color-text-disabled: 74 74 82;
+
+  --color-accent-primary: 59 130 246;
+  --color-accent-hover: 37 99 235;
+  --color-accent-muted: rgba(59, 130, 246, 0.14);
+  --color-accent-border: rgba(59, 130, 246, 0.4);
+  --color-accent-glow: rgba(59, 130, 246, 0.15);
+
+  --color-status-success: 52 211 153;
+  --color-status-success-muted: rgba(52, 211, 153, 0.1);
+  --color-status-warning: 251 191 36;
+  --color-status-warning-muted: rgba(251, 191, 36, 0.1);
+  --color-status-danger: 248 113 113;
+  --color-status-danger-muted: rgba(248, 113, 113, 0.1);
+}
+
+:root[data-theme='light'] {
+  --color-surface-base: 255 255 255;
+  --color-surface-raised: 247 247 248;
+  --color-surface-overlay: 240 240 242;
+  --color-surface-modal: 255 255 255;
+  --color-surface-border: 227 227 232;
+  --color-surface-border-strong: 207 207 216;
+  --color-surface-hover: 240 240 242;
+  --color-surface-active: 230 230 234;
+
+  --color-text-primary: 24 24 27;
+  --color-text-secondary: 82 82 91;
+  --color-text-tertiary: 142 142 152;
+  --color-text-disabled: 184 184 194;
+
+  --color-accent-primary: 37 99 235;
+  --color-accent-hover: 29 78 216;
+  --color-accent-muted: rgba(37, 99, 235, 0.08);
+  --color-accent-border: rgba(37, 99, 235, 0.3);
+  --color-accent-glow: rgba(37, 99, 235, 0.1);
+
+  --color-status-success: 5 150 105;
+  --color-status-success-muted: rgba(5, 150, 105, 0.08);
+  --color-status-warning: 217 119 6;
+  --color-status-warning-muted: rgba(217, 119, 6, 0.08);
+  --color-status-danger: 220 38 38;
+  --color-status-danger-muted: rgba(220, 38, 38, 0.08);
+}
+
 html,
 body,
 #root {
@@ -20,14 +85,14 @@ body {
 
 /* Branded text selection so highlighting feels intentional, not default-blue. */
 ::selection {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgb(var(--color-accent-primary) / 0.3);
   color: #fff;
 }
 
 /* Visible keyboard focus everywhere, without mouse-click outlines. */
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 1px rgb(var(--color-accent-primary) / 0.55);
 }
 
 /* Window drag regions for the frameless (integrated) title bar. The top bar is
@@ -44,7 +109,7 @@ body {
    surface palette and only shows the thumb on hover-capable surfaces. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #26262e transparent;
+  scrollbar-color: rgb(var(--color-surface-active)) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -54,13 +119,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26262e;
+  background: rgb(var(--color-surface-active));
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a45;
+  background: rgb(var(--color-surface-border-strong));
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-corner {

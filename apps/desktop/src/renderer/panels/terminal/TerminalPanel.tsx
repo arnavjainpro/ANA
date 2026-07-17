@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import { X } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { useTerminalStore } from '../../store/terminalStore';
-import { xtermTheme } from '../../theme/tokens';
+import { getXtermTheme } from '../../theme/tokens';
 
 /**
  * A real shell (PTY), same trust boundary as opening Terminal.app — both the
@@ -18,6 +18,7 @@ import { xtermTheme } from '../../theme/tokens';
  */
 export function TerminalPanel(): JSX.Element {
   const terminalOpen = useUiStore((s) => s.terminalOpen);
+  const theme = useUiStore((s) => s.theme);
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -36,7 +37,7 @@ export function TerminalPanel(): JSX.Element {
       fontFamily: '"Fira Code", Monaco, monospace',
       fontSize: 12,
       scrollback: 5000,
-      theme: xtermTheme,
+      theme: getXtermTheme(useUiStore.getState().theme),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -59,6 +60,13 @@ export function TerminalPanel(): JSX.Element {
       term.dispose();
     };
   }, []);
+
+  // The terminal instance survives theme changes (it's created once and kept
+  // alive for the app's lifetime), so re-apply its colors live instead.
+  useEffect(() => {
+    const term = termRef.current;
+    if (term) term.options.theme = getXtermTheme(theme);
+  }, [theme]);
 
   // Lazily spawn the shell the first time the panel is opened.
   useEffect(() => {
